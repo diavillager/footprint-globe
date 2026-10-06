@@ -13,3 +13,11 @@ private/
 local-data/
 node_modules/
 dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+# Exact development configuration exceptions; personal JSON stays ignored.
+!/package.json
+!/package-lock.json
+!/tsconfig.json
