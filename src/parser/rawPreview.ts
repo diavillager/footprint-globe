@@ -16,8 +16,12 @@ function timestamp(value: unknown) {
   const minutes = zone === 'Z' ? 0 : Number(zone.slice(4, 6));
   if (hours > 14 || minutes > 59 || (hours === 14 && minutes !== 0)) return null;
   const offset = (hours * 60 + minutes) * (zone[0] === '-' ? -1 : 1);
-  const ns = BigInt(date.getTime() - offset * 60000) * 1000000n + BigInt((m[5] || '').padEnd(9, '0'));
-  return { ns, instant: { epochMs: Number(ns) / 1000000, sourceText: value } };
+  const wholeMs = date.getTime() - offset * 60000;
+  const fractionNs = Number((m[5] || '').padEnd(9, '0'));
+  const ns = BigInt(wholeMs) * 1000000n + BigInt(fractionNs);
+  // Convert only the small fractional part: converting the full ns value first
+  // can introduce rounding error even when the input has exact milliseconds.
+  return { ns, instant: { epochMs: wholeMs + fractionNs / 1000000, sourceText: value } };
 }
 
 function coordinate(value: unknown) {
