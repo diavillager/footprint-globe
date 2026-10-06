@@ -79,6 +79,27 @@ let stage = 'startup';
         return { dots, lines };
       }, Array.from(zoomImage));
       assert.ok(visible.dots > 0 && visible.lines > 10, 'Synthetic points and lines remain visible at maximum wheel zoom');
+      await page.getByRole('button', { name: '다음 점선 대상 확인' }).click();
+      await page.getByText('점선 대상 1 / 2만 표시 중입니다.', { exact: false }).waitFor();
+      await page.getByRole('button', { name: '다음 점선 대상 확인' }).click();
+      await page.getByText('점선 대상 2 / 2만 표시 중입니다.', { exact: false }).waitFor();
+      await page.getByRole('button', { name: '전체 연결로 돌아가기' }).click();
+      assert.equal(await page.getByText('만 표시 중입니다.', { exact: false }).count(), 0);
+      assert.match(await page.getByRole('status').textContent(), /연결 3개/);
+      const shortGaps = { rawSignals: [0, 0, .00001].map((longitude, i) => ({ position: {
+        LatLng: `0°, ${longitude}°`, timestamp: new Date(Date.UTC(2040, 0, 1) + i * 3600000).toISOString(),
+      } })) };
+      await page.locator('input[type=file]').setInputFiles({ name: 'CANARY.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(shortGaps)) });
+      await page.waitForFunction(() => document.querySelector('[role=status]').textContent.includes('연결 2개'));
+      await page.getByRole('spinbutton', { name: '점선 시간차 기준' }).fill('30');
+      await page.getByText('같은 좌표 1개 · 0m 초과–100m 이하 1개', { exact: false }).waitFor();
+      await page.getByRole('button', { name: '다음 점선 대상 확인' }).click();
+      await page.getByText('양 끝 좌표가 같아 그릴 선의 길이가 없습니다.', { exact: false }).waitFor();
+      await page.getByRole('button', { name: '다음 점선 대상 확인' }).click();
+      await page.getByText('두 지점은 100m 이내입니다.', { exact: false }).waitFor();
+      await page.getByRole('spinbutton', { name: '점선 시간차 기준' }).fill('120');
+      assert.equal(await page.getByRole('button', { name: '다음 점선 대상 확인' }).isDisabled(), true);
+      assert.equal(await page.getByText('만 표시 중입니다.', { exact: false }).count(), 0);
       stage += '-worker';
       const large = { rawSignals: Array.from({ length: 10123 }, (_, i) => ({ position: {
         LatLng: `35.00°, ${125 + (i % 10) / 100}°`, timestamp: new Date(Date.UTC(2040, 0, 1) + i * 60000).toISOString(), SECRET: 'CANARY',
