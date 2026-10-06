@@ -1,6 +1,6 @@
 # Vercel 정적 웹 배포
 
-상태: 2026-10-06 `diavillager/footprint-globe` 프로젝트 생성·Git 연결·Preview 배포를 완료했다. 첫 배포의 환경 분류가 요청과 달라 일시 중지했으나, 사용자가 지도 키 없는 첫 배포의 제공을 허용하고 프로젝트 재개와 Preview 검증 지속을 승인했다. Chrome 파일 접근 권한 변경 없이 현재 검증 범위까지 진행하도록 사용자가 확정했으므로 원격 파일 등록 검증은 미수행으로 남긴다. 후속 PR 병합과 정식 운영 배포 승인은 별도다.
+상태: 2026-10-06 `diavillager/footprint-globe` 프로젝트 생성·Git 연결·Preview 배포를 완료했다. 첫 배포의 환경 분류가 요청과 달라 일시 중지했으나, 사용자가 지도 키 없는 첫 배포의 제공을 허용하고 프로젝트 재개와 Preview 검증 지속을 승인했다. Chrome 파일 접근 권한 변경 없이 현재 검증 범위까지 진행하도록 사용자가 확정했으므로 원격 파일 등록 검증은 미수행으로 남긴다. 이후 사용자가 Production 재배포와 localhost·Preview 키 설정 정리를 승인했고 아래 최신 결과를 반영했다. PR 병합 승인은 별도다.
 
 ## 다른 워크트리로 인계
 
@@ -74,10 +74,19 @@ Node.js 24.x는 Vercel 프로젝트 설정에서 명시적으로 선택한다. �
 - [x] 배포 워크트리에서 Node.js 24.19.0으로 `npm run check` 및 Edge `node tests/app-smoke.cjs` 통과(합성 응답, 개발·빌드 화면)
 - [x] Preview Ready와 실제 지도·한반도 초기 뷰·CSP 메타·이용 안내·390×844 화면의 모달과 페이지 스크롤 없음 확인(Chrome)
 - 원격 합성 JSON 등록·관측 선택·시간대·초기화·기록 미복원 검증은 Chrome 확장 파일 접근 권한으로 차단됐다. 사용자가 권한 변경 없이 현재 범위에서 진행하도록 결정했다. 로컬 Edge 합성 smoke 통과와 구별한다.
-- [ ] PR 검토·승인된 병합 및 Production 배포
+- [x] 사용자 승인에 따른 Production 재배포와 지도 로딩 확인
+- [ ] PR 검토·승인된 병합
 - [ ] 운영 URL에서 합성 전체 흐름·개인정보 처리 검증
 
 사용자 실제 기록은 에이전트가 읽지 않는다. 실제 입력 호환성은 사용자가 배포 화면에서 직접 확인하며 합성 검증과 구별한다. 유료 예산·커스텀 도메인·추가 브라우저 지원은 임의로 확정하지 않는다.
+
+## 최신 운영 상태
+
+- 사용자 요청으로 기존 Production 소스 `bfd4cdb`를 최신 환경변수로 캐시 없이 재배포했다. [Production 배포](https://vercel.com/diavillager/footprint-globe/7Cx2S4TYEn87ddJT8hS8oYN5YjTj)는 Ready다. 해당 소스와 현재 브랜치의 차이는 README·이 명세뿐이다.
+- [운영 주소](https://footprint-globe.vercel.app/)에서 HTTPS 200·X-Frame-Options DENY·실제 지도·한반도 초기 화면을 확인했다. 실제 사용자 파일은 읽지 않았고 원격 파일 등록 검증은 기존 제한대로 미수행이다.
+- 기존 키의 MapTiler 허용 origin은 `footprint-globe.vercel.app`만 남겼다. `localhost`, `127.0.0.1`, Preview 브랜치 주소는 제거했으며 저장 성공을 확인했다. 공급자는 반영에 최대 5분을 안내한다.
+- Vercel `VITE_MAPTILER_API_KEY` 적용 환경도 Production만 남겼다. 기존 Preview 빌드의 키 문자열은 소급 제거되지 않지만 origin 제한으로 지도 사용을 차단한다. Preview 배포 이력·Git 연동·로컬 파일은 삭제하지 않았다.
+- 아래 진행 기록은 과거 단계의 이력이다. 현재 Production에는 지도 키가 반영돼 있다. PR 병합은 하지 않았다.
 
 ## 원격 진행 기록
 
@@ -98,7 +107,7 @@ Node.js 24.x는 Vercel 프로젝트 설정에서 명시적으로 선택한다. �
 - 사용자가 제공을 허용한 지도 키 없는 첫 배포의 기본 도메인 `project-z82gt.vercel.app`에서 HTTPS 200, CSP의 `frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`을 실제 응답으로 확인했다. 이 도메인은 정식 운영 URL로 확정하지 않았다.
 - Preview에서 Vercel 도구막대의 추가 script 태그가 관측되어 프로젝트의 Pre-Production Toolbar를 Off로 저장했다. 기존 로드 화면에는 script 태그가 남아 있어 설정 변경을 삽입 제거·네트워크 무전송 검증 완료와 혼동하지 않는다. Analytics·Speed Insights는 활성화하지 않았다.
 - 배포된 화면의 두 worker·모든 자원 HTTP 상태, 없는 자원 404·비공개 경로 미노출, 요청 단위 JSON/메타데이터 업로드 부재, 지도 403/429/네트워크 실패는 이번 원격 검증에서 미확인이다. 원격 전체 흐름과 실제 사용자 JSON 호환성을 완료했다고 주장하지 않는다.
-- 정식 운영 전에는 별도 병합·배포 승인, 저장된 Production 지도 키를 반영하는 재배포와 사용량 확인, 운영 URL의 지도·전체 흐름 검증이 남아 있다. 방문 지정과 사진은 이 완료 조건에 포함하지 않는다.
+- 운영 재배포와 지도 로딩 확인 이후에도 PR 병합 승인, 정확한 사용량·잔여 한도 확인, 운영 URL의 합성 전체 흐름 검증은 남아 있다. 방문 지정과 사진은 이 완료 조건에 포함하지 않는다.
 
 ## 공식 근거
 

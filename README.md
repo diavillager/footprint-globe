@@ -239,9 +239,9 @@ node tests/write-synthetic-example.cjs
 
 ## 상세 지도 설정과 Vercel 배포
 
-- 운영 주소는 [footprint-globe.vercel.app](https://footprint-globe.vercel.app/)로 연결했고 HTTPS 200을 확인했습니다. MapTiler 허용 origin에도 추가했습니다. 현재는 지도 키 없는 기존 Production 배포를 제공하며 Production 키 설정은 완료했으며 반영을 위한 정식 재배포는 남아 있습니다. 사용자는 Preview에서 문제가 없었다고 확인했습니다.
+- 운영 주소는 [footprint-globe.vercel.app](https://footprint-globe.vercel.app/)로 연결했고 HTTPS 200을 확인했습니다. MapTiler 허용 origin에도 추가했습니다. 사용자 승인으로 Production 재배포를 완료했고 실제 지도 로딩을 확인했습니다. 지도 키와 MapTiler 허용 주소는 운영 전용으로 정리했습니다. 사용자는 Preview에서 문제가 없었다고 확인했습니다.
 - 로컬 `.env.local`에 `VITE_MAPTILER_API_KEY=브라우저용지도키`를 설정합니다. 기존 시험 화면의 `MAPTILER_API_KEY`도 대체값으로 읽습니다. 키를 수정하면 개발 서버 재시작 또는 재빌드가 필요합니다. 키가 없으면 설정 안내를 표시하고 JSON 등록·목록 확인은 유지합니다.
-- Vercel은 Vite 프로젝트로 배포합니다. Node.js 24, 설치 `npm ci`, 빌드 `npm run build`, 출력 `dist`를 사용합니다. 로컬 검증 서버와 `/config`는 배포에 필요하지 않습니다. [Preview](https://footprint-globe-git-codex-vercel-deploy-diavillager.vercel.app/) 배포와 실제 지도 로딩을 확인했으며 Vercel 로그인이 필요합니다. 지도 키는 Production과 Preview 환경에 설정했습니다. Production은 아직 재배포 전입니다. 정식 운영 배포·PR 병합은 별도 승인 전이며, 원격 합성 파일 등록은 브라우저 권한 제한과 사용자의 검증 범위 결정으로 미수행입니다. 첫 배포의 환경 분류 예외와 실제 검증 범위는 [배포 명세](specs/2026-10-06-006-vercel-deploy.md)에 기록합니다.
+- Vercel은 Vite 프로젝트로 배포합니다. Node.js 24, 설치 `npm ci`, 빌드 `npm run build`, 출력 `dist`를 사용합니다. 로컬 검증 서버와 `/config`는 배포에 필요하지 않습니다. [Preview](https://footprint-globe-git-codex-vercel-deploy-diavillager.vercel.app/) 배포와 실제 지도 로딩을 확인했으며 Vercel 로그인이 필요합니다. 이후 사용자 요청으로 Production 재배포를 완료하고 지도 키를 Production 전용으로 변경했습니다. localhost·Preview의 MapTiler 허용도 제거했으므로 현재 Preview에서는 지도를 사용할 수 없습니다. PR 병합은 별도 승인 전이며, 원격 합성 파일 등록은 브라우저 권한 제한과 사용자의 검증 범위 결정으로 미수행입니다. 첫 배포의 환경 분류 예외와 실제 검증 범위는 [배포 명세](specs/2026-10-06-006-vercel-deploy.md)에 기록합니다.
 - 브라우저 지도 키는 빌드에 포함되며 비밀값이 아닙니다. MapTiler에서 실제 운영 도메인·검증에 사용할 Preview 도메인·localhost origin을 제한해야 합니다. Supabase secret/service_role 키를 VITE 환경변수에 넣으면 안 됩니다.
 - MapTiler 지도는 보안 수정 버전 MapLibre GL JS 6.4.1로 표시합니다. SDK 4.1/4.2의 MapLibre 5.24 의존성에 알려진 [attribution HTML 취약점](https://github.com/maplibre/maplibre-gl-js/security/advisories/GHSA-jrc7-96c5-q579)이 있어 그대로 채택하지 않았습니다.
 - 이 구성은 PoC의 MapTiler SDK 세션 집계와 달리 **요청 수 기준**입니다. 공개 배포 전 MapTiler 대시보드에서 실제 사용량과 요금제 한도를 확인해야 합니다. 유료 예산은 확정하지 않았습니다. [공식 집계 설명](https://docs.maptiler.com/guides/account/sessions-vs-requests/)
