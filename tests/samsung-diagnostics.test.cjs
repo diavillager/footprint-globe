@@ -86,7 +86,6 @@ test('CSV failure detail separates blank rows, empty tails and quote states with
   const cases = [
     ['latitude,longitude\n\n', 'csvBlankRow', 'csvWidthErrors'],
     ['latitude,longitude\n""\n', 'csvEmptyRow', 'csvWidthErrors'],
-    ['latitude,longitude\n0,0,', 'csvExtraEmptyTail', 'csvWidthErrors'],
     ['latitude,longitude,\n0,0', 'csvMissingEmptyHeaderTail', 'csvWidthErrors'],
     ['latitude,longitude\n0', 'csvShortRow', 'csvWidthErrors'],
     ['latitude,longitude\n0,0,PRIVATE', 'csvLongRow', 'csvWidthErrors'],
@@ -111,6 +110,30 @@ test('CSV detail counts only first failure per file and handles CRLF and valid q
   const valid = await api.inspect([file('latitude,longitude,note,\r\n0,0,"PRIVATE,\r\n""TEXT""",\r\n', 'a.csv')]);
   assert.equal(valid.csvFiles, 1); assert.equal(valid.csvRows, 1); assert.equal(valid.coordinateCandidates, 1);
   assert.equal(valid.csvWidthErrors, 0); assert.equal(valid.csvSyntaxErrors, 0);
+});
+
+test('surplus empty CSV strings preserve header-aligned values and count files rows cells', async () => {
+  const source = 'latitude,longitude,start_time,note\r\n0,0,2208988800000,"PRIVATE,VALUE",,""\r\n1,2,2208988800000,,\r\n';
+  const r = await api.inspect([file(source, 'PRIVATE.csv')]);
+  assert.equal(r.csvFiles, 1); assert.equal(r.csvRows, 2); assert.equal(r.timedCandidates, 2);
+  assert.equal(r.csvTailFiles, 1); assert.equal(r.csvTailRows, 2); assert.equal(r.csvTailCells, 3);
+  assert.equal(r.csvWidthErrors, 0); assert.doesNotMatch(api.format(r), /PRIVATE|2208988800000/);
+});
+
+test('nonempty surplus, whitespace surplus and missing cells are not repaired; late errors roll back values', async () => {
+  for (const suffix of ['0,0,PRIVATE', '0,0, ', '0', 'PRIVATE"TEXT,0']) {
+    const r = await api.inspect([file('latitude,longitude\n0,0,\n' + suffix, 'PRIVATE.csv')]);
+    assert.equal(r.excludedFiles, 1); assert.equal(r.coordinateCandidates, 0); assert.equal(r.csvRows, 0);
+    assert.equal(r.csvTailFiles, 1); assert.equal(r.csvTailRows, 1); assert.equal(r.csvTailCells, 1);
+    assert.doesNotMatch(api.format(r), /PRIVATE/);
+  }
+});
+
+test('empty tails cannot bypass column limits or turn missing coordinates into zero', async () => {
+  const r = await api.inspect([file('latitude,longitude\n,,,', 'a.csv')]);
+  assert.equal(r.coordinateCandidates, 0); assert.equal(r.invalidCoordinates, 1); assert.equal(r.csvTailCells, 2);
+  const bounded = await api.inspect([file('latitude,longitude\n0,0' + ','.repeat(api.limits.csvColumns), 'a.csv')]);
+  assert.equal(bounded.csvLimitErrors, 1); assert.equal(bounded.csvTailRows, 0);
 });
 
 test('read errors and arbitrary identifiers never appear in output or progress', async () => {

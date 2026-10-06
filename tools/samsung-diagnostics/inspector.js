@@ -9,15 +9,16 @@ function createSamsungInspector() {
   const known = new Set([...pairs.flatMap(p => p.slice(0, 2)), ...timeKeys, 'LatLng', 'latLng']);
   const headerOnly = new Set(['create_time', 'update_time', 'datauuid', 'deviceuuid', 'pkg_name', 'extra_data', 'day_time', 'step_count', 'calorie']);
   const normalizeHeader = value => value.trim().replace(/^com\.samsung\.(?:health|shealth)\.(?:(?:exercise|activity\.day_summary|calories_burned\.details)\.)?/, '');
-  const csvDetails = ['csvBlankRow', 'csvEmptyRow', 'csvExtraEmptyTail', 'csvMissingEmptyHeaderTail', 'csvShortRow', 'csvLongRow',
+  const csvDetails = ['csvBlankRow', 'csvEmptyRow', 'csvMissingEmptyHeaderTail', 'csvShortRow', 'csvLongRow',
     'csvUnclosedQuote', 'csvQuoteInUnquoted', 'csvSpaceAfterQuote', 'csvTextAfterQuote'];
+  const csvTailCounts = ['csvTailFiles', 'csvTailRows', 'csvTailCells'];
   const fresh = () => ({ selectedFiles: 0, inspectedFiles: 0, jsonFiles: 0, csvFiles: 0, excludedFiles: 0,
     readErrors: 0, parseErrors: 0, limitFiles: 0, otherFiles: 0, exerciseNames: 0, routeNames: 0,
     nodes: 0, coordinateCandidates: 0, timedCandidates: 0, invalidCoordinates: 0, timeCandidates: 0,
     unknownFields: 0, opaqueStrings: 0, partial: false,
     csvSyntaxErrors: 0, csvUnknownHeaders: 0, csvDuplicateHeaders: 0, csvWidthErrors: 0, csvEncodingErrors: 0, csvLimitErrors: 0,
     csvHeaders: 0, csvCoordinateHeaders: 0, csvTimeHeaders: 0, csvReferenceHeaders: 0, csvSummaryHeaders: 0, csvRows: 0,
-    ...Object.fromEntries(csvDetails.map(key => [key, 0])) });
+    ...Object.fromEntries([...csvDetails, ...csvTailCounts].map(key => [key, 0])) });
   const number = value => typeof value === 'number' && Number.isFinite(value) ? value :
     typeof value === 'string' && /^[+-]?\d+(?:\.\d+)?$/.test(value.trim()) ? Number(value) : NaN;
   // Time *candidate*, not normalized time: export-specific epoch units stay unresolved.
@@ -92,10 +93,18 @@ function createSamsungInspector() {
           if (new Set(header).size !== header.length) fail('CSV_DUPLICATE');
         }
       } else if (header) {
+        // Only ignore surplus empty strings after all header-aligned cells.
+        // Column limits above still apply to the unmodified row.
+        if (row.length > header.length && row.slice(header.length).every(value => value === '')) {
+          report.csvTailFiles = 1;
+          report.csvTailRows++;
+          report.csvTailCells += row.length - header.length;
+          row.length = header.length;
+        }
         if (row.length !== header.length) {
           // Describe only the first failing row; never repair or expose its contents.
           const detail = !rowTouched ? 'csvBlankRow' : row.every(value => value.trim() === '') ? 'csvEmptyRow' :
-            row.length > header.length ? (row.slice(header.length).every(value => value === '') ? 'csvExtraEmptyTail' : 'csvLongRow') :
+            row.length > header.length ? 'csvLongRow' :
               header.slice(row.length).every(value => value === '') ? 'csvMissingEmptyHeaderTail' : 'csvShortRow';
           report[detail]++;
           fail('CSV_WIDTH');
@@ -160,7 +169,7 @@ function createSamsungInspector() {
         continue;
       } finally {
         // Fixed header-presence counts are separate from successful row/value scans.
-        if (csv) for (const key of ['csvHeaders', 'csvCoordinateHeaders', 'csvTimeHeaders', 'csvReferenceHeaders', 'csvSummaryHeaders', ...csvDetails]) report[key] += delta[key];
+        if (csv) for (const key of ['csvHeaders', 'csvCoordinateHeaders', 'csvTimeHeaders', 'csvReferenceHeaders', 'csvSummaryHeaders', ...csvDetails, ...csvTailCounts]) report[key] += delta[key];
       }
       report.inspectedFiles++; report[json ? 'jsonFiles' : 'csvFiles']++;
       for (const key of ['coordinateCandidates', 'timedCandidates', 'invalidCoordinates', 'timeCandidates', 'unknownFields', 'opaqueStrings', 'csvRows']) report[key] += delta[key];
@@ -170,14 +179,15 @@ function createSamsungInspector() {
     return report;
   }
   function format(r) {
-    return ['삼성 헬스 로컬 구조 진단 v3 — 원본 값·파일명·임의 필드명 없음',
+    return ['삼성 헬스 로컬 구조 진단 v4 — 원본 값·파일명·임의 필드명 없음',
       `선택 파일: ${r.selectedFiles}, 검사 파일: ${r.inspectedFiles} (JSON ${r.jsonFiles}, CSV ${r.csvFiles})`,
       `제외 파일: ${r.excludedFiles} (크기·건수·노드 한도 ${r.limitFiles}, 읽기 실패 ${r.readErrors}, JSON/CSV 판별 실패 합계 ${r.parseErrors}, 미지원 확장자 ${r.otherFiles})`,
       `CSV 제외 사유: [CSV_SYNTAX] 문법 오류 ${r.csvSyntaxErrors}, [CSV_HEADER] 알려진 헤더 없음 ${r.csvUnknownHeaders}, [CSV_DUPLICATE] 중복 헤더 ${r.csvDuplicateHeaders}, [CSV_WIDTH] 행 열수 불일치 ${r.csvWidthErrors}, [CSV_ENCODING] 인코딩 판별 불가 ${r.csvEncodingErrors}, [CSV_LIMIT] 행·열 한도 ${r.csvLimitErrors}`,
       `CSV 헤더 후보 파일: ${r.csvHeaders} (좌표 열 ${r.csvCoordinateHeaders}, 관측 시각 열 ${r.csvTimeHeaders}, 부가 자료 참조 열 ${r.csvReferenceHeaders}, 좌표 열 없는 요약·관리 필드 ${r.csvSummaryHeaders})`,
-      `CSV 열수 불일치 상세(파일 수): [WIDTH_BLANK] 빈 행 ${r.csvBlankRow}, [WIDTH_EMPTY] 공백·빈 셀만 있는 행 ${r.csvEmptyRow}, [WIDTH_EXTRA_EMPTY_TAIL] 초과 열이 모두 빈 값 ${r.csvExtraEmptyTail}, [WIDTH_MISSING_EMPTY_HEADER_TAIL] 부족한 열의 헤더가 모두 빈 이름 ${r.csvMissingEmptyHeaderTail}, [WIDTH_SHORT] 그 외 열 부족 ${r.csvShortRow}, [WIDTH_LONG] 그 외 열 초과 ${r.csvLongRow}`,
+      `CSV 열수 불일치 상세(파일 수): [WIDTH_BLANK] 빈 행 ${r.csvBlankRow}, [WIDTH_EMPTY] 공백·빈 셀만 있는 행 ${r.csvEmptyRow}, [WIDTH_MISSING_EMPTY_HEADER_TAIL] 부족한 열의 헤더가 모두 빈 이름 ${r.csvMissingEmptyHeaderTail}, [WIDTH_SHORT] 그 외 열 부족 ${r.csvShortRow}, [WIDTH_LONG] 그 외 열 초과 ${r.csvLongRow}`,
+      `[EMPTY_TAIL_IGNORED] 헤더 뒤 초과 빈 문자열만 무시: 파일 ${r.csvTailFiles}, 행 ${r.csvTailRows}, 셀 ${r.csvTailCells}. 이후 실패한 파일의 처리 건수도 포함하며 해당 파일의 값 후보는 제외합니다.`,
       `CSV 문법 오류 상세(파일 수): [QUOTE_UNCLOSED] 닫히지 않은 따옴표 ${r.csvUnclosedQuote}, [QUOTE_IN_FIELD] 비인용 필드 안 따옴표 ${r.csvQuoteInUnquoted}, [QUOTE_SPACE_AFTER] 닫는 따옴표 뒤 공백 ${r.csvSpaceAfterQuote}, [QUOTE_TEXT_AFTER] 닫는 따옴표 뒤 다른 문자 ${r.csvTextAfterQuote}`,
-      '상세 사유는 파일마다 처음 중단된 지점만 집계합니다. 뒤쪽 오류는 검사하지 않으며 빈 열 제거·행 보정·따옴표 복구는 하지 않습니다.',
+      '상세 오류 사유는 파일마다 처음 중단된 지점만 집계합니다. 초과 빈 문자열 이외의 열 보정·따옴표 복구는 하지 않습니다. 원본 파일은 변경하지 않습니다.',
       `CSV 검사된 데이터 행: ${r.csvRows}. 헤더 집계는 이후 행 검사에 실패한 파일도 포함하며 실제 값의 존재를 뜻하지 않습니다.`,
       `이름으로 분류한 운동 관련 파일: ${r.exerciseNames}, 경로 관련 파일: ${r.routeNames} (내용 존재의 증거 아님)`,
       `검사 노드: ${r.nodes}, 구조 검사 한도 도달: ${r.partial ? '예' : '아니오'}`,
