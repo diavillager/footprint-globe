@@ -3,7 +3,32 @@ import { parseRawPreview } from '../../parser/rawPreview';
 import { syntheticRawPreview } from '../../fixtures/preview';
 import { connectAll, distribution, separationKm } from './analysis';
 import { arcVertices, buildPreviewObjects } from './geometry';
-import { LineSegments } from 'three';
+import { LineSegments, PerspectiveCamera, Points, Vector3 } from 'three';
+
+it('anchors line endpoints to point centers through rotation and close zoom', () => {
+  const result = parse({ rawSignals: [pos('2040-01-01T00:00:00Z', '35°, 125°'), pos('2040-01-01T00:01:00Z', '36°, 127°')] });
+  if (!result.ok) throw new Error('fixture');
+  for (const differentiated of [false, true]) {
+    const drawing = buildPreviewObjects(result.data.observations, connectAll(result.data.observations), differentiated, 0);
+    try {
+      const dots = (drawing.group.children.find(child => child instanceof Points) as Points).geometry.getAttribute('position');
+      const line = (drawing.group.children[differentiated ? 1 : 0] as LineSegments).geometry.getAttribute('position');
+      for (const [pointIndex, lineIndex] of [[0, 0], [1, line.count - 1]]) {
+        const point = new Vector3().fromBufferAttribute(dots, pointIndex!);
+        const endpoint = new Vector3().fromBufferAttribute(line, lineIndex!);
+        expect(endpoint.toArray()).toEqual(point.toArray());
+        for (const radius of [270, 108, 101.5]) {
+          for (const rotation of [-.2, 0, .2]) {
+            const camera = new PerspectiveCamera(50, 2, .1, 1000);
+            camera.position.copy(point).normalize().applyAxisAngle(new Vector3(0, 1, 0), rotation).multiplyScalar(radius);
+            camera.lookAt(0, 0, 0); camera.updateMatrixWorld();
+            expect(endpoint.clone().project(camera).distanceTo(point.clone().project(camera))).toBeLessThan(1e-8);
+          }
+        }
+      }
+    } finally { drawing.dispose(); }
+  }
+});
 
 const parse = (data: unknown) => parseRawPreview(JSON.stringify(data), 'dataset:test');
 const pos = (stamp: string, coordinate = '0°, 0°') => ({ position: { LatLng: coordinate, timestamp: stamp } });
