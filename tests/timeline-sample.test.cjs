@@ -118,6 +118,24 @@ test('bounded sampling keeps representatives and path endpoints', () => {
   assert.equal(result.report.sampledOutRecords, 53);
   assert.ok(result.report.activities && result.report.paths);
 });
+test('large synthetic export retains late route representatives and bounded output', () => {
+  const data = fixtures.modern();
+  const visit = JSON.stringify(data.semanticSegments[0]);
+  const tail = data.semanticSegments.slice(1, 3).map(record => JSON.stringify(record));
+  const records = 65000;
+  const input = '{"semanticSegments":[' + Array(records).fill(visit).concat(tail).join(',') + ']}';
+  assert.ok(Buffer.byteLength(input) > 24 * 1024 * 1024);
+  assert.ok(Buffer.byteLength(input) < LIMITS.inputBytes);
+  const result = sanitizeText(input);
+  const output = parsed(result).semanticSegments;
+  assert.equal(result.report.processedRecords, records + 2);
+  assert.equal(result.report.sampledOutRecords, records + 2 - LIMITS.records);
+  assert.equal(result.report.excludedRecords, 0);
+  assert.equal(output.length, LIMITS.records);
+  assert.equal(result.report.activities, 1);
+  assert.equal(result.report.paths, 1);
+  assert.ok(result.report.outputBytes < LIMITS.outputBytes);
+});
 for (const [name, value] of [['latitude range', '91°, 0°'], ['longitude range', '0°, 181°'], ['embedded text', 'geo:1,2 SECRET'], ['HTML', '<img src=SECRET>'], ['wrong type', null]]) {
   test(`invalid coordinate: ${name} excluded`, () => {
     const data = fixtures.modern(); data.semanticSegments[0].visit.topCandidate.placeLocation = value;
@@ -236,4 +254,22 @@ test('UI selects a synthetic file, reports only metadata and downloads safe outp
   await handlers['source:change']();
   assert.equal(elements.save.disabled, true);
   assert.doesNotMatch(elements.status.textContent, /SECRET_ERROR/);
+  assert.match(elements.status.textContent, /FILE_READ_FAILED/);
+  let oversizedRead = false;
+  elements.source.files = [{ size: LIMITS.inputBytes + 1024, async text() { oversizedRead = true; return 'SECRET_OVERSIZED'; } }];
+  await handlers['source:change']();
+  assert.equal(oversizedRead, false);
+  assert.equal(elements.save.disabled, true);
+  assert.match(elements.status.textContent, /FILE_TOO_LARGE/);
+  assert.match(elements.status.textContent, /64\.0 MiB/);
+  assert.doesNotMatch(elements.status.textContent, /SECRET/);
+  sandbox.TimelineSample = undefined;
+  await handlers['source:change']();
+  assert.match(elements.status.textContent, /TOOL_NOT_LOADED/);
+  assert.equal(oversizedRead, false);
+  sandbox.TimelineSample = { LIMITS, sanitizeText() { throw new Error('SECRET_PROCESSING'); } };
+  elements.source.files = [{ size: 1, async text() { return '{}'; } }];
+  await handlers['source:change']();
+  assert.match(elements.status.textContent, /PROCESSING_FAILED/);
+  assert.doesNotMatch(elements.status.textContent, /SECRET/);
 });

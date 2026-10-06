@@ -1,7 +1,7 @@
 /* Offline, allowlist-only Timeline sample generator. No IO and no logging. */
 'use strict';
 (function (root) {
-  const LIMITS = Object.freeze({ inputBytes: 20 * 1024 * 1024, records: 9, pathPoints: 24, outputBytes: 64 * 1024, inputRecords: 20000, arrayItems: 20000 });
+  const LIMITS = Object.freeze({ inputBytes: 64 * 1024 * 1024, records: 9, pathPoints: 24, outputBytes: 64 * 1024, inputRecords: 100000, arrayItems: 20000 });
   const TAG = Symbol('internal-template');
   const NS = 1000000000n;
   const FAKE_EPOCH_SECONDS = BigInt(Date.UTC(2040, 0, 1) / 1000);
@@ -275,13 +275,19 @@
       report.inputRecords = records.length;
       if (records.length > LIMITS.inputRecords) fail('INPUT_LIMIT');
       const valid = [];
+      const represented = new Set();
       for (let i = 0; i < records.length; i++) {
         try {
           const counts = { omittedArrayItems: 0 };
           const template = walk(records[i], legacy ? legacyRecord : deviceRecord, counts);
           const kinds = classify(template, legacy);
-          valid.push({ template, kinds, counts, index: i });
           report.processedRecords++;
+          // Retain only the first records and first representative of each kind.
+          // Still validate every input record, without keeping every template alive.
+          if (report.processedRecords <= LIMITS.records || kinds.some(kind => !represented.has(kind))) {
+            valid.push({ template, kinds, counts, index: i });
+          }
+          kinds.forEach(kind => represented.add(kind));
         } catch (error) { report.excludedRecords++; reason(error.message); }
       }
       // Include representatives of all available supported record kinds first.
@@ -294,7 +300,7 @@
       const selected = [...chosen].sort((a, b) => a.index - b.index);
       const kinds = selected.flatMap(v => v.kinds);
       if (!kinds.includes('visit') || !(kinds.includes('activity') || kinds.includes('path'))) fail('INSUFFICIENT_COVERAGE');
-      report.sampledOutRecords = valid.length - selected.length;
+      report.sampledOutRecords = report.processedRecords - selected.length;
       report.outputRecords = selected.length;
       report.visits = kinds.filter(k => k === 'visit').length;
       report.activities = kinds.filter(k => k === 'activity').length;
