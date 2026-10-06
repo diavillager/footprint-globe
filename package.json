@@ -11,7 +11,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "test": "npm run test:sample && npm run test:app",
-    "test:sample": "node --test tests/timeline-sample.test.cjs tests/structure-diagnostics.test.cjs tests/raw-signals.test.cjs tests/source-audit.test.cjs",
+    "test:sample": "node --test tests/timeline-sample.test.cjs tests/structure-diagnostics.test.cjs tests/raw-signals.test.cjs tests/source-audit.test.cjs tests/samsung-diagnostics.test.cjs",
     "test:app": "vitest run",
     "check": "npm run typecheck && npm test && npm run build"
   },

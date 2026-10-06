@@ -4,6 +4,9 @@
 *.zip
 *.kml
 *.gpx
+*.csv
+*.fit
+*.tcx
 *.jpg
 *.jpeg
 *.png

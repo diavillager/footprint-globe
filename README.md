@@ -101,6 +101,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-preview.ps1
 
 ## 로컬 샘플 생성기 실행
 
+삼성 헬스 개인 데이터 다운로드에 위치 자료가 있는지 확인하려면 별도의 [삼성 헬스 로컬 구조 진단](tools/samsung-diagnostics/README.md)을 사용하세요. `tools/samsung-diagnostics/index.html`을 Chrome/Edge에서 열고 내려받은 최상위 폴더를 선택합니다. JSON·CSV의 알려진 좌표·시각 후보 건수만 표시하고 파일명·건강정보·원본 값은 출력하거나 전송하지 않습니다. 경로 복원·샘플 생성·삼성 자료의 앱 가져오기 기능은 아닙니다. 후보가 없어도 미지원 구조와 제외 항목 때문에 위치 자료가 없다고 단정할 수 없습니다.
+
 1. 저장소의 `tools/timeline-sample/index.html`을 Chrome 또는 Edge로 여세요. 파일을 더블 클릭하거나 브라우저 창으로 끌어놓으면 됩니다. 웹 서버, 설치, 로그인, API 키가 필요하지 않습니다.
 2. **로컬 Timeline JSON 선택**에서 원본을 직접 선택하세요. 원본은 저장소 밖에 두는 것을 권장합니다.
 3. 처리 결과에서 형식, 정상 처리·제외 건수와 경고를 확인하세요. 생성에 성공했을 때만 **가상 샘플 JSON 저장**을 누를 수 있습니다.
