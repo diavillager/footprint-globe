@@ -1,8 +1,10 @@
 # Footprint Globe
 
+> 2026-10-06 배포 결정: 사용자 지정 방문은 사진 등록과 함께 추후 확장으로 진행하며 현재 MVP와 Vercel 배포의 완료 조건에서 제외한다. 아래 방문 지정·사진 계약은 확장 참고로 유지한다. 배포는 [Vercel 명세](specs/2026-10-06-006-vercel-deploy.md)를 따른다.
+
 > 최신 UI 결정: MapTiler가 스크롤 없는 전체 화면을 차지한다. 초기에는 한반도 전체를 표시하며 JSON 등록 시 기존 확대 수준을 유지한 채 첫 관측을 화면 중앙으로 이동한다. 상단 왼쪽에 JSON 올리기·지우기·UTC/KST 버튼 전환·포인트 목록·시간별/거리별 분포를 가로 배치한다. 목록과 분포는 중앙 모달 창에서 확인하며 긴 내용은 창 안에서만 스크롤한다. 합성 예제 버튼과 드롭다운 UI는 제거한다. 관측 상세 말풍선과 실선 전용 연결을 유지하고 점선 정책은 제품 소유자가 추후 결정한다. 아래 이전 UI 설명은 이 결정 이전의 이력이다.
 
-Google Timeline의 방문과 이동 기록을 지구본으로 탐색하는 프로젝트입니다. 현재 **로컬 샘플 생성기**와 **rawSignals 실제 파일용 연결 미리보기**를 제공합니다. JSON을 브라우저에서 선택해 전체 화면 MapTiler 지도에서 실선 발자취와 관측 상세를 탐색할 수 있습니다. 방문 지정은 후속 작업이며 사진은 MVP 이후 확장입니다.
+Google Timeline의 방문과 이동 기록을 지구본으로 탐색하는 프로젝트입니다. 현재 **로컬 샘플 생성기**와 **rawSignals 실제 파일용 연결 미리보기**를 제공합니다. JSON을 브라우저에서 선택해 전체 화면 MapTiler 지도에서 실선 발자취와 관측 상세를 탐색할 수 있습니다. 방문 지정과 사진 등록은 함께 MVP 이후 확장으로 진행합니다.
 
 화면 개발 브랜치에는 근접 연결 확대, 관측 클릭·목록 선택, UTC·한국 시간 전환이 추가됐습니다. 겹친 점을 클릭하면 후보를 각각 선택할 수 있고, 전체 관측은 20개씩 원래 순서로 탐색합니다. 날짜·좌표는 선택 화면에서만 확인하며 진단·로그로 보내지 않습니다. 시간대 변경은 원본 시각이나 정렬 순서를 바꾸지 않습니다. 사진 추가는 사용자 요청으로 MVP에서 제외하고 추후 확장으로 남겼습니다. 해외 여행을 포함한 MapTiler 상세 지도를 실제 기록 화면에 통합했습니다. 관측 선택과 UTC·한국 시간 전환, 실선 연결을 볼 수 있습니다. MapTiler를 기본으로 사용하며 지도 선택 메뉴는 제공하지 않습니다.
 
@@ -224,7 +226,7 @@ node tests/write-synthetic-example.cjs
 
 ## Git 보호와 후속 개발 흐름
 
-`.gitignore`는 모든 `*.json`, 위치 내보내기 포맷, 사진, `private/`, `local-data/`를 기본 제외합니다. 현재 루트의 `package.json`, `package-lock.json`, `tsconfig.json`만 예외로 허용합니다. 추가 설정도 **정확한 개발 파일 경로만** 예외로 추가하고 예제 JSON 전체 디렉터리를 통째로 허용하지 마세요. `git add -f`는 이 보호를 우회하므로 개인 파일에 사용하지 마세요. 이미 추적 중인 파일은 `.gitignore`로 보호되지 않습니다.
+`.gitignore`는 모든 `*.json`, 위치 내보내기 포맷, 사진, `private/`, `local-data/`를 기본 제외합니다. 현재 루트의 `package.json`, `package-lock.json`, `tsconfig.json`, `vercel.json`만 예외로 허용합니다. 추가 설정도 **정확한 개발 파일 경로만** 예외로 추가하고 예제 JSON 전체 디렉터리를 통째로 허용하지 마세요. `git add -f`는 이 보호를 우회하므로 개인 파일에 사용하지 마세요. 이미 추적 중인 파일은 `.gitignore`로 보호되지 않습니다.
 
 후속 흐름은 다음과 같습니다.
 
@@ -237,9 +239,10 @@ node tests/write-synthetic-example.cjs
 
 ## 상세 지도 설정과 Vercel 배포
 
+- 운영 주소는 [footprint-globe.vercel.app](https://footprint-globe.vercel.app/)로 연결했고 HTTPS 200을 확인했습니다. MapTiler 허용 origin에도 추가했습니다. 사용자 승인으로 Production 재배포를 완료했고 실제 지도 로딩을 확인했습니다. 지도 키와 MapTiler 허용 주소는 운영 전용으로 정리했습니다. 사용자는 Preview에서 문제가 없었다고 확인했습니다.
 - 로컬 `.env.local`에 `VITE_MAPTILER_API_KEY=브라우저용지도키`를 설정합니다. 기존 시험 화면의 `MAPTILER_API_KEY`도 대체값으로 읽습니다. 키를 수정하면 개발 서버 재시작 또는 재빌드가 필요합니다. 키가 없으면 설정 안내를 표시하고 JSON 등록·목록 확인은 유지합니다.
-- Vercel은 Vite 프로젝트로 배포합니다. Node.js 24, 설치 `npm ci`, 빌드 `npm run build`, 출력 `dist`를 사용합니다. Vercel 프로젝트의 해당 Preview/Production 환경에 `VITE_MAPTILER_API_KEY`를 설정합니다. 로컬 검증 서버와 `/config`는 배포에 필요하지 않습니다. 실제 Vercel 배포는 아직 수행하지 않았습니다.
-- 브라우저 지도 키는 빌드에 포함되며 비밀값이 아닙니다. MapTiler에서 실제 운영 도메인·검증에 사용할 Preview 도메인·localhost origin을 제한해야 합니다. Supabase secret/service_role 키를 VITE 환경변수에 넣으면 안 됩니다.
+- Vercel은 Vite 프로젝트로 배포합니다. Node.js 24, 설치 `npm ci`, 빌드 `npm run build`, 출력 `dist`를 사용합니다. 로컬 검증 서버와 `/config`는 배포에 필요하지 않습니다. [Preview](https://footprint-globe-git-codex-vercel-deploy-diavillager.vercel.app/) 배포와 실제 지도 로딩을 확인했으며 Vercel 로그인이 필요합니다. 이후 사용자 요청으로 Production 재배포를 완료하고 지도 키를 Production 전용으로 변경했습니다. localhost·Preview의 MapTiler 허용도 제거했으므로 현재 Preview에서는 지도를 사용할 수 없습니다. 원격 합성 파일 등록은 브라우저 권한 제한과 사용자의 검증 범위 결정으로 미수행입니다. 첫 배포의 환경 분류 예외와 실제 검증 범위는 [배포 명세](specs/2026-10-06-006-vercel-deploy.md)에 기록합니다.
+- 브라우저 지도 키는 빌드에 포함되며 비밀값이 아닙니다. 현재 MapTiler 허용 origin은 운영 도메인만 남겼습니다. localhost·Preview에서 다시 지도를 사용하려면 별도 설정이 필요합니다. Supabase secret/service_role 키를 VITE 환경변수에 넣으면 안 됩니다.
 - MapTiler 지도는 보안 수정 버전 MapLibre GL JS 6.4.1로 표시합니다. SDK 4.1/4.2의 MapLibre 5.24 의존성에 알려진 [attribution HTML 취약점](https://github.com/maplibre/maplibre-gl-js/security/advisories/GHSA-jrc7-96c5-q579)이 있어 그대로 채택하지 않았습니다.
 - 이 구성은 PoC의 MapTiler SDK 세션 집계와 달리 **요청 수 기준**입니다. 공개 배포 전 MapTiler 대시보드에서 실제 사용량과 요금제 한도를 확인해야 합니다. 유료 예산은 확정하지 않았습니다. [공식 집계 설명](https://docs.maptiler.com/guides/account/sessions-vs-requests/)
 - MapTiler 로고와 자료의 저작권 표기를 유지합니다. 한국어 이름을 우선하며 없는 이름은 지도 자료의 기본 이름을 사용합니다. 경계 자료와 분쟁 경계 필터는 공급자 스타일을 유지합니다.
