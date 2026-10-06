@@ -34,9 +34,9 @@ export function createSyntheticRecordedTimeline(): TimelineData {
   };
 }
 export function createSyntheticEmptyResult(): ParseResult {
-  return { ok: false, diagnostics: [{ code: 'EMPTY_DATA', count: 1 }] };
+  return { ok: false, code: 'NO_VALID_POSITIONS', counts: { input: 0, accepted: 0, ignoredSignals: 0, invalidPositions: 0, ignoredRootFields: 0 } };
 }
 /** UI development substitute; deliberately not a JSON parser and never used for real file input. */
 export const syntheticParser: TimelineParser = async (_text, datasetId): Promise<ParseResult> => ({
-  ok: true, data: { ...createSyntheticTimeline(), datasetId }, diagnostics: [],
+  ok: true, data: { ...createSyntheticTimeline(), datasetId }, counts: { input: 3, accepted: 3, ignoredSignals: 0, invalidPositions: 0, ignoredRootFields: 0 },
 });

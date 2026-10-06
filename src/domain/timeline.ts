@@ -7,7 +7,7 @@ export type PhotoId = `photo:${string}`;
 
 /** Decimal degrees (not E7); zero is valid. Parsers validate latitude ±90 and longitude ±180. */
 export interface Coordinate { readonly latitude: number; readonly longitude: number }
-/** Epoch milliseconds for ordering; source ISO/epoch text preserves precision and offset separately. */
+/** Approximate epoch milliseconds for statistics. Preserve parser order for sub-ms instants. */
 export interface Instant { readonly epochMs: number; readonly sourceText: string }
 export interface Observation {
   readonly id: ObservationId;
@@ -49,11 +49,12 @@ export interface PhotoAttachment {
   readonly visitId: VisitId;
   readonly objectUrl: string;
 }
-export type DiagnosticCode = 'INVALID_JSON' | 'UNSUPPORTED_FORMAT' | 'INVALID_RECORD' | 'EMPTY_DATA' | 'INPUT_LIMIT';
+export type ImportError = 'INVALID_JSON' | 'UNSUPPORTED_FORMAT' | 'INPUT_LIMIT' | 'NO_VALID_POSITIONS' | 'FILE_READ_FAILED';
+/** Current rawSignals accounting; missing counts means input was not fully inspected, not zero. */
+export interface ImportCounts { input: number; accepted: number; ignoredSignals: number; invalidPositions: number; ignoredRootFields: number }
 /** Never include arbitrary keys, filenames, source values, or exception text in diagnostics. */
-export interface Diagnostic { readonly code: DiagnosticCode; readonly count: number }
 export type ParseResult =
-  | { readonly ok: true; readonly data: TimelineData; readonly diagnostics: readonly Diagnostic[] }
-  | { readonly ok: false; readonly diagnostics: readonly Diagnostic[] };
-/** Async boundary supports a future worker; supported formats and limits remain separate decisions. */
+  | { readonly ok: true; readonly data: TimelineData; readonly counts: ImportCounts }
+  | { readonly ok: false; readonly code: ImportError; readonly counts?: ImportCounts };
+/** Promise alone does not move CPU work off-thread; the UI invokes this inside its worker. */
 export type TimelineParser = (text: string, datasetId: DatasetId) => Promise<ParseResult>;

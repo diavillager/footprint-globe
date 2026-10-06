@@ -1,10 +1,12 @@
 import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { PREVIEW_LIMITS, type PreviewResult, type PreviewError } from '../../parser/rawPreview';
+import { PREVIEW_LIMITS } from '../../parser';
+import type { ParseResult, ImportError } from '../../domain/timeline';
+import type { ImportRequest } from './importFile';
 import { connectAll, distribution } from './analysis';
 import { PreviewGlobe } from './PreviewGlobe';
 import { createPreviewDemo } from '../../fixtures/preview';
 
-const errors: Record<PreviewError, string> = {
+const errors: Record<ImportError, string> = {
   INVALID_JSON: 'JSON 형식이 올바르지 않습니다.', UNSUPPORTED_FORMAT: '이 미리보기는 rawSignals 위치 기록만 지원합니다.',
   INPUT_LIMIT: '미리보기 한도(64 MiB, 원시 신호 100,000개)를 초과했습니다.',
   NO_VALID_POSITIONS: '표시할 수 있는 좌표·시각이 없습니다.', FILE_READ_FAILED: '로컬 파일을 처리하지 못했습니다.',
@@ -29,7 +31,7 @@ const timeEdges = [1, 5, 30, 60, 360, 1440], timeLabels = ['1분 이하', '1–5
 const distanceEdges = [.1, 1, 10, 100, 1000], distanceLabels = ['100m 이하', '100m–1km', '1–10km', '10–100km', '100–1,000km', '1,000km 초과'];
 
 export function LocalPreview() {
-  const [result, setResult] = useState<PreviewResult | null>(null);
+  const [result, setResult] = useState<ParseResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<'solid' | 'gaps'>('solid');
   const [threshold, setThreshold] = useState(60);
@@ -50,12 +52,12 @@ export function LocalPreview() {
     try {
       const current = new Worker(new URL('./preview.worker.ts', import.meta.url), { type: 'module' });
       worker.current = current;
-      current.onmessage = (event: MessageEvent<PreviewResult>) => {
+      current.onmessage = (event: MessageEvent<ParseResult>) => {
         if (worker.current !== current) return;
         setResult(event.data); stop();
       };
       current.onerror = event => { event.preventDefault(); if (worker.current === current) { setResult({ ok: false, code: 'FILE_READ_FAILED' }); stop(); } };
-      current.postMessage({ file, datasetId: `dataset:${crypto.randomUUID()}` });
+      current.postMessage({ file, datasetId: `dataset:${crypto.randomUUID()}` } satisfies ImportRequest);
     } catch { stop(); setResult({ ok: false, code: 'FILE_READ_FAILED' }); }
   };
   return <main>
