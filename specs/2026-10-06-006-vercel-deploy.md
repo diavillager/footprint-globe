@@ -1,6 +1,6 @@
 # Vercel 정적 웹 배포
 
-상태: 2026-10-06 사용자가 배포 진행, 기존 화면 브랜치 정리, 배포 브랜치 생성과 이 명세 작성을 승인했다. `diavillager/footprint-globe` 프로젝트 생성과 Git 연결을 완료했다. 첫 배포의 환경 분류가 요청과 달라 일시 중지했으나, 사용자가 지도 키 없는 첫 배포의 제공을 허용하고 프로젝트 재개와 Preview 검증 지속을 승인했다. 후속 PR 병합과 정식 운영 배포 승인은 별도다.
+상태: 2026-10-06 `diavillager/footprint-globe` 프로젝트 생성·Git 연결·Preview 배포를 완료했다. 첫 배포의 환경 분류가 요청과 달라 일시 중지했으나, 사용자가 지도 키 없는 첫 배포의 제공을 허용하고 프로젝트 재개와 Preview 검증 지속을 승인했다. Chrome 파일 접근 권한 변경 없이 현재 검증 범위까지 진행하도록 사용자가 확정했으므로 원격 파일 등록 검증은 미수행으로 남긴다. 후속 PR 병합과 정식 운영 배포 승인은 별도다.
 
 ## 다른 워크트리로 인계
 
@@ -71,7 +71,8 @@ Node.js 24.x는 Vercel 프로젝트 설정에서 명시적으로 선택한다. �
 - [ ] MapTiler 운영 origin·사용량/요금제 확인
 - [x] 로컬 `npm run check`: 타입 검사·116개 테스트·빌드 통과(설정 초안 작성 후 수행, 큰 지도 번들 경고 유지)
 - [x] 배포 워크트리에서 Node.js 24.19.0으로 `npm run check` 및 Edge `node tests/app-smoke.cjs` 통과(합성 응답, 개발·빌드 화면)
-- [ ] Preview 원격 검증
+- [x] Preview Ready와 실제 지도·한반도 초기 뷰·CSP 메타·이용 안내·390×844 화면의 모달과 페이지 스크롤 없음 확인(Chrome)
+- 원격 합성 JSON 등록·관측 선택·시간대·초기화·기록 미복원 검증은 Chrome 확장 파일 접근 권한으로 차단됐다. 사용자가 권한 변경 없이 현재 범위에서 진행하도록 결정했다. 로컬 Edge 합성 smoke 통과와 구별한다.
 - [ ] PR 검토·승인된 병합 및 Production 배포
 - [ ] 운영 URL에서 합성 전체 흐름·개인정보 처리 검증
 
@@ -85,6 +86,16 @@ Node.js 24.x는 Vercel 프로젝트 설정에서 명시적으로 선택한다. �
 - MapTiler 계정은 Free 플랜이다. 대시보드의 현재 청구 기간에는 0 requests/0 sessions와 데이터 없음이 표시됐으므로 이를 정확한 잔여 한도로 단정하지 않는다. 사용자가 기존 `footprint-globe-dev` 키의 Preview 재사용을 승인했다. localhost 허용을 유지하며 `footprint-globe-git-codex-vercel-deploy-diavillager.vercel.app`만 추가했다. 전체 Vercel 와일드카드·출처 불명 허용은 사용하지 않았다.
 - Vercel Preview의 `VITE_MAPTILER_API_KEY`는 공개 브라우저 키에 맞는 Config 형식으로 저장 완료했다. Production 키와 운영 origin은 아직 설정하지 않았다. MapTiler는 origin 변경 반영에 최대 5분이 걸릴 수 있다고 안내한다.
 - 배포 워크트리의 기본 npm 실행기는 Node.js 18을 사용해 optional native binding 설치가 누락됐다. Node.js 24로 npm CLI를 직접 실행해 `npm ci`를 다시 수행한 후 모든 검사가 통과했다. 잠금 파일은 변경하지 않았다.
+
+## 확인한 배포와 검증 한계
+
+- [Preview 브랜치 URL](https://footprint-globe-git-codex-vercel-deploy-diavillager.vercel.app/)은 브랜치의 최신 배포를 가리킨다. 실제 지도 검증 대상은 `37464ea`의 [Ready 배포](https://vercel.com/diavillager/footprint-globe/FztZRE78g91oxAdC2VV5cFmvso64)다. 이후 문서만 변경한 커밋은 같은 앱·빌드 설정을 사용한다.
+- 브라우저 공개 지도 키는 Preview 환경에만 설정했다. MapTiler의 정확한 브랜치 도메인 허용으로 실제 지도 로딩이 성공했다. 유료 플랜·초과 과금은 활성화하지 않았다. [공식 Free 용도 안내](https://www.maptiler.com/cloud/pricing/)는 테스트·개인·비상업 용도를 포함한다. 계정 대시보드에서 정확한 잔여 요청 한도는 확인하지 못했다.
+- Preview에는 기존 Vercel 인증 보호를 유지했다. 로그인된 Chrome에서 화면 검증을 수행했으며 비로그인 HTTP 요청은 Vercel SSO로 302 이동했다. 이 응답을 앱의 HTTP 200이나 보안 헤더 검증으로 계산하지 않았다.
+- 사용자가 제공을 허용한 지도 키 없는 첫 배포의 기본 도메인 `project-z82gt.vercel.app`에서 HTTPS 200, CSP의 `frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`을 실제 응답으로 확인했다. 이 도메인은 정식 운영 URL로 확정하지 않았다.
+- Preview에서 Vercel 도구막대의 추가 script 태그가 관측되어 프로젝트의 Pre-Production Toolbar를 Off로 저장했다. 기존 로드 화면에는 script 태그가 남아 있어 설정 변경을 삽입 제거·네트워크 무전송 검증 완료와 혼동하지 않는다. Analytics·Speed Insights는 활성화하지 않았다.
+- 배포된 화면의 두 worker·모든 자원 HTTP 상태, 없는 자원 404·비공개 경로 미노출, 요청 단위 JSON/메타데이터 업로드 부재, 지도 403/429/네트워크 실패는 이번 원격 검증에서 미확인이다. 원격 전체 흐름과 실제 사용자 JSON 호환성을 완료했다고 주장하지 않는다.
+- 정식 운영 전에는 별도 병합·배포 승인, Production 지도 키·정확한 운영 origin과 사용량 확인, 운영 URL 검증이 남아 있다. 방문 지정과 사진은 이 완료 조건에 포함하지 않는다.
 
 ## 공식 근거
 
