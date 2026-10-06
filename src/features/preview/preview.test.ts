@@ -64,6 +64,7 @@ it('computes known great-circle distances and bins without mutating input', () =
   expect(separationKm({ latitude: 0, longitude: 179 }, { latitude: 0, longitude: -179 })).toBeCloseTo(222.39, 2);
   const values = [10, 0, 1, 2];
   expect(distribution(values, [1, 5]).bins).toEqual([2, 1, 1]);
+  expect(distribution(values, [1, 5]).median).toBe(1.5);
   expect(values).toEqual([10, 0, 1, 2]);
   expect(distribution([], [1]).median).toBeNull();
 });

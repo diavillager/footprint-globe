@@ -16,7 +16,11 @@ export function connectAll(points: readonly Observation[]): Connection[] {
 }
 export function distribution(values: readonly number[], edges: readonly number[]) {
   const sorted = [...values].sort((a, b) => a - b);
-  const quantile = (p: number) => sorted.length ? sorted[Math.ceil((sorted.length - 1) * p)]! : null;
+  const quantile = (p: number) => {
+    if (!sorted.length) return null;
+    const index = (sorted.length - 1) * p, lower = Math.floor(index), upper = Math.ceil(index);
+    return sorted[lower]! + (sorted[upper]! - sorted[lower]!) * (index - lower);
+  };
   const bins = Array<number>(edges.length + 1).fill(0);
   for (const value of sorted) {
     const index = edges.findIndex(edge => value <= edge);
