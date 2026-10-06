@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MapTiler 공개 지역 검증</title>
+<link rel="stylesheet" href="/check.css">
+<header>
+  <h1>MapTiler 공개 지역 검증</h1>
+  <p>실제 여행 기록을 받지 않는 시험 화면입니다. 시작하면 MapTiler에서 지도 자료와 SDK를 받습니다. 확대·이동에 따라 조회 지역이 전송되며 무료 사용량을 소비합니다.</p>
+  <button id="start">지도 검증 시작</button>
+  <button id="stop" disabled>지도 종료</button>
+  <p id="status" role="status">대기 중 · 외부 지도 요청 전</p>
+</header>
+<main>
+  <aside>
+    <fieldset id="controls" disabled>
+      <legend>공개 검증 지역</legend>
+      <label>지역 <select id="region"><option value="seoul">서울</option><option value="tokyo">도쿄</option><option value="newyork">뉴욕</option><option value="paris">파리</option><option value="london">런던</option><option value="dateline">날짜변경선 주변</option></select></label>
+      <label>확대 <select id="zoom"><option value="2">2 · 세계</option><option value="6">6 · 지역</option><option value="9" selected>9 · 도시</option><option value="12">12 · 상세</option><option value="19">19 · 근접</option></select></label>
+      <label>투영 <select id="projection"><option value="globe">지구본</option><option value="mercator">평면</option></select></label>
+      <label><input id="boundaries" type="checkbox">행정 경계 강조</label>
+      <button id="refresh">경계 집계 갱신</button>
+    </fieldset>
+    <h2>화면에 그려진 경계</h2>
+    <p>타일 조각의 집계이며 도시 수나 경계의 완전성을 뜻하지 않습니다. 행정 단계 숫자의 의미는 국가별 확인이 필요합니다.</p>
+    <pre id="report">아직 확인 전</pre>
+    <h2>시험용 위치점 선택</h2>
+    <p>실제 방문 기록이 아닌 서울의 가상 시험점입니다. 버튼을 누르면 해당 점으로 확대 이동하고 주황 테두리로 강조합니다.</p>
+    <p>A는 기준점, B는 약 1m 북쪽, C는 B와 같은 좌표의 별도 기록, D는 A에서 약 100m 북쪽입니다. B와 C를 번갈아 선택하면 지도 위치는 같고 선택 ID만 바뀌는 것이 정상입니다. 주황 점선은 시험용 연결입니다.</p>
+    <div id="observations"></div>
+    <p id="selection" aria-live="polite">선택 없음</p>
+  </aside>
+  <div class="map-wrap"><div id="map" aria-label="공개 검증 지도"></div><p id="map-selection" hidden aria-live="polite"></p></div>
+</main>
+<script src="/check.js"></script>
+</html>
