@@ -68,7 +68,8 @@ Node.js 24.x는 Vercel 프로젝트 설정에서 명시적으로 선택한다. �
 
 - [x] 대상 계정 확인: https://vercel.com/diavillager, 새 프로젝트 생성 승인
 - [x] 실제 프로젝트 생성·연결: [Vercel 프로젝트](https://vercel.com/diavillager/footprint-globe), GitHub `diavillager/footprint-globe`, Vite, Node.js 24.x, Production 추적 `main`
-- [ ] MapTiler 운영 origin·사용량/요금제 확인
+- [x] 운영 도메인 `footprint-globe.vercel.app` 연결 및 MapTiler 허용 origin 추가
+- [ ] MapTiler 운영 사용량·잔여 한도 확인
 - [x] 로컬 `npm run check`: 타입 검사·116개 테스트·빌드 통과(설정 초안 작성 후 수행, 큰 지도 번들 경고 유지)
 - [x] 배포 워크트리에서 Node.js 24.19.0으로 `npm run check` 및 Edge `node tests/app-smoke.cjs` 통과(합성 응답, 개발·빌드 화면)
 - [x] Preview Ready와 실제 지도·한반도 초기 뷰·CSP 메타·이용 안내·390×844 화면의 모달과 페이지 스크롤 없음 확인(Chrome)
@@ -84,7 +85,9 @@ Node.js 24.x는 Vercel 프로젝트 설정에서 명시적으로 선택한다. �
 - `bfd4cdb`를 `Create Preview Deployment`로 요청했으나 [첫 배포](https://vercel.com/diavillager/footprint-globe/2emh3ebiFF3WcLNXSTdYiMAdbR7X)의 결과 환경은 Production이었다. 원인을 확정하지 않았으며 발견 즉시 프로젝트의 Production 제공을 일시 중지했다. PR 병합은 수행하지 않았다. 배포에는 지도 키가 없다.
 - Vercel의 일시 중지 안내는 Preview 배포·설정·데이터에 영향이 없다고 표시하지만, 실제 `85d51f3` Git 푸시로 생성된 [Preview](https://vercel.com/diavillager/footprint-globe/3ufCZhv5MHJFd5LqeBzJWs1413j1)는 프로젝트가 중지되어 빌드할 수 없다는 사유로 Blocked 처리됐다. 이후 사용자가 지도 키 없는 첫 배포 제공을 허용하며 재개를 승인했고, 프로젝트 재개를 완료했다. 이 승인은 PR 병합·정식 운영 배포 승인으로 확대하지 않는다.
 - MapTiler 계정은 Free 플랜이다. 대시보드의 현재 청구 기간에는 0 requests/0 sessions와 데이터 없음이 표시됐으므로 이를 정확한 잔여 한도로 단정하지 않는다. 사용자가 기존 `footprint-globe-dev` 키의 Preview 재사용을 승인했다. localhost 허용을 유지하며 `footprint-globe-git-codex-vercel-deploy-diavillager.vercel.app`만 추가했다. 전체 Vercel 와일드카드·출처 불명 허용은 사용하지 않았다.
-- Vercel Preview의 `VITE_MAPTILER_API_KEY`는 공개 브라우저 키에 맞는 Config 형식으로 저장 완료했다. Production 키와 운영 origin은 아직 설정하지 않았다. MapTiler는 origin 변경 반영에 최대 5분이 걸릴 수 있다고 안내한다.
+- Vercel Preview의 `VITE_MAPTILER_API_KEY`는 공개 브라우저 키에 맞는 Config 형식으로 저장 완료했다. Production 키는 아직 설정하지 않았다. 이후 사용자 승인으로 운영 origin `footprint-globe.vercel.app`도 기존 키 허용 목록에 추가했다. MapTiler는 origin 변경 반영에 최대 5분이 걸릴 수 있다고 안내한다.
+- 사용자는 Preview에서 문제가 없었다고 확인했다. 세부 테스트 항목은 보고되지 않았으므로 에이전트의 원격 합성 전체 흐름 검증과 구별한다.
+- 사용자 승인으로 `footprint-globe.vercel.app`을 Production 환경에 연결했다. Vercel의 Valid Configuration과 HTTPS 200을 확인했다. 기존 `project-z82gt.vercel.app`은 유지했다. 새 주소도 지도 키 없는 기존 배포를 제공하며 별도 Production 배포·승격·PR 병합은 수행하지 않았다.
 - 배포 워크트리의 기본 npm 실행기는 Node.js 18을 사용해 optional native binding 설치가 누락됐다. Node.js 24로 npm CLI를 직접 실행해 `npm ci`를 다시 수행한 후 모든 검사가 통과했다. 잠금 파일은 변경하지 않았다.
 
 ## 확인한 배포와 검증 한계
@@ -95,7 +98,7 @@ Node.js 24.x는 Vercel 프로젝트 설정에서 명시적으로 선택한다. �
 - 사용자가 제공을 허용한 지도 키 없는 첫 배포의 기본 도메인 `project-z82gt.vercel.app`에서 HTTPS 200, CSP의 `frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`을 실제 응답으로 확인했다. 이 도메인은 정식 운영 URL로 확정하지 않았다.
 - Preview에서 Vercel 도구막대의 추가 script 태그가 관측되어 프로젝트의 Pre-Production Toolbar를 Off로 저장했다. 기존 로드 화면에는 script 태그가 남아 있어 설정 변경을 삽입 제거·네트워크 무전송 검증 완료와 혼동하지 않는다. Analytics·Speed Insights는 활성화하지 않았다.
 - 배포된 화면의 두 worker·모든 자원 HTTP 상태, 없는 자원 404·비공개 경로 미노출, 요청 단위 JSON/메타데이터 업로드 부재, 지도 403/429/네트워크 실패는 이번 원격 검증에서 미확인이다. 원격 전체 흐름과 실제 사용자 JSON 호환성을 완료했다고 주장하지 않는다.
-- 정식 운영 전에는 별도 병합·배포 승인, Production 지도 키·정확한 운영 origin과 사용량 확인, 운영 URL 검증이 남아 있다. 방문 지정과 사진은 이 완료 조건에 포함하지 않는다.
+- 정식 운영 전에는 별도 병합·배포 승인, Production 지도 키 설정과 사용량 확인, 운영 URL의 지도·전체 흐름 검증이 남아 있다. 방문 지정과 사진은 이 완료 조건에 포함하지 않는다.
 
 ## 공식 근거
 
