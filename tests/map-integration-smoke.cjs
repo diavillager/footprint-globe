@@ -48,7 +48,7 @@ let stage = 'startup';
       await popup.getByText('겹친 관측 1 / 3',{exact:true}).waitFor();
       await popup.getByRole('button',{name:'다음 관측',exact:true}).click();
       await popup.getByRole('heading',{name:'관측 2',exact:true}).waitFor();
-      await page.getByRole('button',{name:'한국 시간',exact:true}).click();
+      await page.getByRole('button',{name:'KST',exact:true}).click();
       assert.match(await popup.textContent(),/10:00:00/);
       const before=await page.locator('.maplibregl-popup-tip').boundingBox();
       await page.mouse.move(box.x+box.width/2+100,box.y+box.height/2+100);

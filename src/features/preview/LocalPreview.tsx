@@ -83,7 +83,7 @@ export function LocalPreview() {
         <span className="brand">FOOTPRINT</span>
         <label className="file-button">JSON 올리기<input aria-label="JSON 올리기" type="file" accept=".json,application/json" onChange={e => { const file = e.currentTarget.files?.[0]; e.currentTarget.value = ''; load(file); }} /></label>
         <button onClick={() => { stop(); resetSelection(); setResult(null); setPanel(null); }} disabled={!result && !busy}>{busy ? '처리 취소' : '지우기'}</button>
-        <div className="timezone-switch" role="group" aria-label="표시 시간대"><button aria-pressed={timezone === 'UTC'} onClick={() => setTimezone('UTC')}>UTC</button><button aria-pressed={timezone === 'Asia/Seoul'} onClick={() => setTimezone('Asia/Seoul')}>한국 시간</button></div>
+        <div className="timezone-switch" role="group" aria-label="표시 시간대"><button aria-pressed={timezone === 'UTC'} onClick={() => setTimezone('UTC')}>UTC</button><button aria-pressed={timezone === 'Asia/Seoul'} onClick={() => setTimezone('Asia/Seoul')}>KST</button></div>
         <button disabled={!data} aria-haspopup="dialog" onClick={() => setPanel('points')}>포인트 목록</button>
         <button disabled={!data} aria-haspopup="dialog" onClick={() => setPanel('time')}>시간별 분포</button>
         <button disabled={!data} aria-haspopup="dialog" onClick={() => setPanel('distance')}>거리별 분포</button>

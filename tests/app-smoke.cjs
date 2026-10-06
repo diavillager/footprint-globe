@@ -46,7 +46,7 @@ let stage = 'startup';
       await page.getByRole('button',{name:/^관측 21 ·/}).click();
       await page.getByRole('dialog',{name:'관측포인트 상세 정보'}).waitFor(); console.log(stage, 'popup');
       assert.equal(await page.locator('.observation-detail').count(),0);
-      await page.getByRole('button',{name:'한국 시간',exact:true}).click();
+      await page.getByRole('button',{name:'KST',exact:true}).click();
       assert.match(await page.getByRole('dialog').textContent(),/09:00:20/);
       await page.getByRole('button',{name:'상세 정보 닫기',exact:true}).click();
       assert.equal(await page.getByRole('dialog').count(),0);

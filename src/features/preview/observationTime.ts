@@ -8,5 +8,5 @@ const formatters = Object.fromEntries(['UTC', 'Asia/Seoul'].map(timeZone => [tim
 export function formatObservationTime(time: Instant, timezone: DisplayTimezone): string {
   // Keep source sub-millisecond precision without using rounded epochMs to sort.
   const fraction = time.sourceText.match(/\.(\d+)(?:Z|[+-]\d{2}:\d{2})$/)?.[1];
-  return `${formatters[timezone].format(time.epochMs)}${fraction ? `.${fraction}` : ''} ${timezone === 'UTC' ? 'UTC' : '한국 시간 (UTC+09:00)'}`;
+  return `${formatters[timezone].format(time.epochMs)}${fraction ? `.${fraction}` : ''} ${timezone === 'UTC' ? 'UTC' : 'KST'}`;
 }
