@@ -97,6 +97,6 @@ export function LocalPreview() {
       <h2>기록 간격을 확인하세요</h2><p>아래 분포는 전체 유효 관측의 이웃 쌍을 대상으로 합니다. 거리는 두 점 사이의 지표면 최단 거리이며 실제 이동 거리나 도로 길이가 아닙니다. 날짜·좌표·원본 파일명은 표에 표시하지 않습니다.</p>
       <div className="distributions"><Histogram title="시간차 분포" values={times} edges={timeEdges} labels={timeLabels} unit="분" /><Histogram title="지점 간 거리 분포" values={distances} edges={distanceEdges} labels={distanceLabels} unit="km" /></div>
     </>}
-    <footer>브라우저를 닫거나 기록을 지우면 앱의 기록 참조를 해제합니다. 실제 지구본 화면에는 위치 정보가 드러나므로 공유할 때는 원본 지도 캡처 대신 표시 방식에 대한 의견을 알려 주세요. 사진·방문 지정 기능은 아직 준비 중입니다.</footer>
+    <footer>브라우저를 닫거나 기록을 지우면 앱의 기록 참조를 해제합니다. 실제 지구본 화면에는 위치 정보가 드러나므로 공유할 때는 원본 지도 캡처 대신 표시 방식에 대한 의견을 알려 주세요. 방문 지정 기능은 준비 중이며, 사진 추가는 MVP 이후 확장 기능입니다.</footer>
   </main>;
 }
