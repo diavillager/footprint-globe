@@ -6,7 +6,9 @@
 
 Google Timeline의 방문과 이동 기록을 지구본으로 탐색하는 프로젝트입니다. 현재 **로컬 샘플 생성기**와 **rawSignals 실제 파일용 연결 미리보기**를 제공합니다. JSON을 브라우저에서 선택해 전체 화면 MapTiler 지도에서 실선 발자취와 관측 상세를 탐색할 수 있습니다. 방문 지정과 사진 등록은 함께 MVP 이후 확장으로 진행합니다.
 
-화면 개발 브랜치에는 근접 연결 확대, 관측 클릭·목록 선택, UTC·한국 시간 전환이 추가됐습니다. 겹친 점을 클릭하면 후보를 각각 선택할 수 있고, 전체 관측은 20개씩 원래 순서로 탐색합니다. 날짜·좌표는 선택 화면에서만 확인하며 진단·로그로 보내지 않습니다. 시간대 변경은 원본 시각이나 정렬 순서를 바꾸지 않습니다. 사진 추가는 사용자 요청으로 MVP에서 제외하고 추후 확장으로 남겼습니다. 해외 여행을 포함한 MapTiler 상세 지도를 실제 기록 화면에 통합했습니다. 관측 선택과 UTC·한국 시간 전환, 실선 연결을 볼 수 있습니다. MapTiler를 기본으로 사용하며 지도 선택 메뉴는 제공하지 않습니다.
+데이터·화면·배포 변경은 PR #9·#11·#12를 통해 `main`에 병합됐습니다. 겹친 점은 후보를 각각 선택할 수 있고 전체 관측은 20개씩 시간순으로 탐색합니다. UTC/KST 전환은 원본 시각이나 정렬 순서를 바꾸지 않습니다. 현재 기본 화면은 MapTiler 상세 지도이며 연결선은 실선입니다. 사용자 지정 방문과 사진은 추후 확장입니다.
+
+앱 입력은 `rawSignals` 위치 관측에 한정하며 64 MiB·100,000개 신호까지 검사합니다. 원본에 명시된 방문·이동 경로와 `semanticSegments`·`timelineObjects` 입력은 앱에서 지원하지 않습니다. 샘플 생성기가 지원하는 형식을 앱에서도 모두 읽을 수 있는 것은 아닙니다.
 
 ## 프로젝트 기준 문서
 
@@ -23,7 +25,7 @@ Google Timeline의 방문과 이동 기록을 지구본으로 탐색하는 프�
 
 ## 앱 공통 개발 환경
 
-앱은 React·TypeScript·Vite·react-globe.gl·Three.js와 일반 CSS를 사용합니다. 별도 서버 DB나 상태 관리 프레임워크 없이 공통 타입으로 데이터와 화면을 분리합니다. 배경은 MapTiler Base v4를 사용합니다. 이전 [개략 육지 윤곽](docs/basemap.md) 자료는 이력으로 남습니다. 상세 지도는 MapLibre GL JS로 렌더링합니다.
+앱은 React·TypeScript·Vite·MapLibre GL JS와 일반 CSS를 사용합니다. 별도 서버 DB 없이 공통 타입으로 데이터와 화면을 분리하고 MapTiler Base v4를 표시합니다. react-globe.gl·Three.js와 이전 [개략 육지 윤곽](docs/basemap.md) 구현은 저장소에 남아 있지만 현재 기본 화면은 아닙니다.
 
 Node.js 22.12 이상과 npm이 필요합니다. Node 24 환경에서 검증했습니다. Node 18에서는 기존 샘플 단위 테스트만 실행할 수 있습니다. Vite의 요구사항은 [공식 안내](https://vite.dev/guide/)에서 확인할 수 있습니다.
 
@@ -48,9 +50,9 @@ npm run preview
 
 데이터 담당은 `src/parser/`의 `parseTimeline(text, datasetId)` 진입점과 검증·정규화를, 화면 담당은 `src/app/`·`src/features/`의 파일 선택·worker·화면·사진 자원을 맡습니다. 파일 읽기는 화면 측 `importFile.ts`가 worker 안에서 수행합니다. 제품 UI에 합성 예제 버튼은 없으며 합성 데이터는 자동 검증에서만 사용합니다. 공통 타입·fixture·패키지·잠금 파일 변경은 한 담당자가 조율합니다. 세부 담당 범위와 통합 순서는 공통 기반 명세를 따릅니다.
 
-공통 계약 정리와 분리 준비 검증은 [PR #8](https://github.com/diavillager/footprint-globe/pull/8)에 정리했습니다. 이를 포함한 `main`의 동일한 기준 커밋에서 데이터·화면 작업을 분리합니다. 근접 관측의 점선은 합성 약 1m 간격에서 개선을 확인했으며 실제 기록의 유용성은 사용자 로컬 확인이 남았습니다. 상세 지도는 통합했으며 방문 지정은 아직 구현하지 않았습니다. 사진은 MVP 이후 확장입니다. 표시 시간대는 UTC·한국 시간 전환으로 확정했고 최종 연결 표시 정책·추가 브라우저 지원은 미확정입니다.
+공통 계약 준비는 [PR #8](https://github.com/diavillager/footprint-globe/pull/8), 데이터 검증은 PR #9, 지도·화면 통합은 PR #11, 배포는 PR #12에 반영됐습니다. 현재 실선 전용 표시는 확정된 UI 결정이며 과거 점선 비교 화면은 제공하지 않습니다. 점선 정책과 추가 브라우저 지원은 추후 검토 사항입니다.
 
-방문은 사용자가 관측점을 선택해 직접 지정하기로 결정했습니다. 방문 지정 UI는 미구현이며 사진은 MVP 이후 확장입니다. 이번 연결 미리보기는 전체 유효 관측을 잇는 시각 실험이며 실제 경로나 방문을 자동 생성하지 않습니다. 제품 전체의 지원 형식·한도·브라우저 범위를 확정한 것은 아닙니다.
+현재 연결은 유효 관측 사이의 흐름이며 실제 경로나 방문을 자동 생성하지 않습니다. 사용자 지정 방문과 사진은 함께 MVP 이후 확장으로 남겼습니다. 현재 입력 범위 밖의 지원 확대는 별도 결정이 필요합니다.
 
 추가 브라우저 검증은 Playwright와 Edge가 있는 환경에서 `node tests/app-smoke.cjs`로 실행합니다(`npm run build` 선행). 완전 합성 입력으로 개발·배포 지구본, 파일 선택, 중앙 창, UTC/KST 전환, 10,123개 관측, 잘못된 입력 복구와 지우기를 확인하며 실제 파일은 읽지 않습니다.
 
@@ -95,7 +97,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-preview.ps1
 - 원본 파일명·개별 날짜·좌표는 진단 표나 로그에 출력하지 않지만 지구본 자체에는 위치가 드러납니다. 로컬 저장소·서버 저장·자동 전송은 없습니다. 파일 처리 worker는 교체·지우기·취소 시 종료합니다.
 - 설치 시 npm 패키지는 다운로드합니다. JSON은 브라우저 내부에서 처리합니다. 상세 지도의 CSP는 api.maptiler.com 지도 리소스 요청을 허용합니다. 지도 요청으로 IP·열람 지역·확대 수준이 전달될 수 있으며 JSON 본문·관측 시각·파일명은 보내지 않습니다. 지도 선택 및 개략 지구본 전환은 제공하지 않습니다. 개발 모드는 로컬 자동 새로고침 연결을 사용합니다.
 - 현재 UI는 Edge에서 합성 입력으로 검증했습니다. 실제 원본 호환성은 사용자가 직접 확인하며, WebGL을 사용할 수 없는 환경에서는 고정 오류와 집계만 표시합니다.
-- Three.js·지구본·지도 데이터가 포함되어 현재 빌드에 큰 번들 경고가 있습니다. 첫 로드 비용은 남아 있으며 실제 데이터가 포함된 경고는 아닙니다.
+- 현재 MapLibre 지도 번들에 큰 번들 경고가 있습니다. 첫 로드 비용은 남아 있으며 실제 데이터가 포함된 경고는 아닙니다.
 
 ## 로컬 샘플 생성기 실행
 
@@ -235,13 +237,17 @@ node tests/write-synthetic-example.cjs
 3. 회귀 테스트용으로는 필요한 구조를 다시 작성한 완전 합성 fixture를 사용합니다.
 4. 실제 원본 JSON의 호환성은 사용자가 로컬 앱의 파일 선택 기능으로 직접 검증합니다. 개발 도구·채팅·원격 저장소로 원본을 전달하지 않습니다.
 
-현재 검증은 합성 입력 기준입니다. 실제 원본 파일의 호환성은 아직 검증하지 않았습니다.
+에이전트의 검증은 합성 입력 기준입니다. 사용자가 직접 수행한 실제 기록 확인과 구별하며 모든 실제 내보내기 버전의 호환성을 보장하지 않습니다.
 
 ## 상세 지도 설정과 Vercel 배포
 
+운영 후속 검증은 `node tests/deployment-smoke.cjs`로 실행합니다(Node.js 22.12 이상, Playwright·Edge 필요). 입력 파일을 받지 않고 메모리에서 합성 24개 관측을 생성합니다. 실제 운영 지도 요청을 소비하므로 기본 `npm run check`에는 포함하지 않습니다. 파일 등록·관측 선택·UTC/KST·목록/분포·지우기·새로고침, 두 worker와 보안 헤더, 요청 내 합성 표식 노출 여부를 검사합니다. 403·429·네트워크 실패와 복구는 별도 세션의 합성 응답으로 확인합니다.
+
+2026-10-06 위 운영 검증을 통과했습니다. 검사 구간의 예상 밖 요청·업로드·합성 표식 노출·페이지 오류·자원 요청 실패는 0건이었습니다. 실제 파일 호환성은 사용자가 직접 확인하며, MapTiler 계정은 확인 당시 Free·현재 청구 기간 643 requests/0 sessions였으며, Account 툴팁의 저장·처리·리소스 개수 한도도 확인했습니다. 지도 열람 requests 자체의 잔여 횟수와는 구별합니다. 자세한 범위와 한계는 [배포 명세의 후속 검증](specs/2026-10-06-006-vercel-deploy.md#2026-10-06-배포-후-합성-검증)을 참조하세요.
+
 - 운영 주소는 [footprint-globe.vercel.app](https://footprint-globe.vercel.app/)로 연결했고 HTTPS 200을 확인했습니다. MapTiler 허용 origin에도 추가했습니다. 사용자 승인으로 Production 재배포를 완료했고 실제 지도 로딩을 확인했습니다. 지도 키와 MapTiler 허용 주소는 운영 전용으로 정리했습니다. 사용자는 Preview에서 문제가 없었다고 확인했습니다.
 - 로컬 `.env.local`에 `VITE_MAPTILER_API_KEY=브라우저용지도키`를 설정합니다. 기존 시험 화면의 `MAPTILER_API_KEY`도 대체값으로 읽습니다. 키를 수정하면 개발 서버 재시작 또는 재빌드가 필요합니다. 키가 없으면 설정 안내를 표시하고 JSON 등록·목록 확인은 유지합니다.
-- Vercel은 Vite 프로젝트로 배포합니다. Node.js 24, 설치 `npm ci`, 빌드 `npm run build`, 출력 `dist`를 사용합니다. 로컬 검증 서버와 `/config`는 배포에 필요하지 않습니다. [Preview](https://footprint-globe-git-codex-vercel-deploy-diavillager.vercel.app/) 배포와 실제 지도 로딩을 확인했으며 Vercel 로그인이 필요합니다. 이후 사용자 요청으로 Production 재배포를 완료하고 지도 키를 Production 전용으로 변경했습니다. localhost·Preview의 MapTiler 허용도 제거했으므로 현재 Preview에서는 지도를 사용할 수 없습니다. 원격 합성 파일 등록은 브라우저 권한 제한과 사용자의 검증 범위 결정으로 미수행입니다. 첫 배포의 환경 분류 예외와 실제 검증 범위는 [배포 명세](specs/2026-10-06-006-vercel-deploy.md)에 기록합니다.
+- Vercel은 Vite 프로젝트로 배포합니다. Node.js 24, 설치 `npm ci`, 빌드 `npm run build`, 출력 `dist`를 사용합니다. 로컬 검증 서버와 `/config`는 배포에 필요하지 않습니다. [Preview](https://footprint-globe-git-codex-vercel-deploy-diavillager.vercel.app/) 배포와 실제 지도 로딩을 확인했으며 Vercel 로그인이 필요합니다. 이후 사용자 요청으로 Production 재배포를 완료하고 지도 키를 Production 전용으로 변경했습니다. localhost·Preview의 MapTiler 허용도 제거했으므로 현재 Preview에서는 지도를 사용할 수 없습니다. 최초 배포 때 생략한 원격 합성 파일 등록은 이후 별도 Edge 세션에서 검증했습니다. 첫 배포의 환경 분류 예외와 실제 검증 범위는 [배포 명세](specs/2026-10-06-006-vercel-deploy.md)에 기록합니다.
 - 브라우저 지도 키는 빌드에 포함되며 비밀값이 아닙니다. 현재 MapTiler 허용 origin은 운영 도메인만 남겼습니다. localhost·Preview에서 다시 지도를 사용하려면 별도 설정이 필요합니다. Supabase secret/service_role 키를 VITE 환경변수에 넣으면 안 됩니다.
 - MapTiler 지도는 보안 수정 버전 MapLibre GL JS 6.4.1로 표시합니다. SDK 4.1/4.2의 MapLibre 5.24 의존성에 알려진 [attribution HTML 취약점](https://github.com/maplibre/maplibre-gl-js/security/advisories/GHSA-jrc7-96c5-q579)이 있어 그대로 채택하지 않았습니다.
 - 이 구성은 PoC의 MapTiler SDK 세션 집계와 달리 **요청 수 기준**입니다. 공개 배포 전 MapTiler 대시보드에서 실제 사용량과 요금제 한도를 확인해야 합니다. 유료 예산은 확정하지 않았습니다. [공식 집계 설명](https://docs.maptiler.com/guides/account/sessions-vs-requests/)
