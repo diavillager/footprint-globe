@@ -38,6 +38,12 @@ let stage = 'startup';
       assert.equal(await page.getByRole('alert').count(), 0);
       // Capture authored demo only, never a selected personal file.
       if (server === production) await page.screenshot({ path: path.join(os.tmpdir(), 'footprint-preview-synthetic.png'), fullPage: true });
+      // Inspect circular markers at close range as well as the initial globe scale.
+      for (let zoom = 0; zoom < 5; zoom++) {
+        await page.getByRole('button', { name: '확대', exact: true }).click();
+        await page.waitForTimeout(350);
+      }
+      if (server === production) await page.locator('canvas').screenshot({ path: path.join(os.tmpdir(), 'footprint-preview-zoom-synthetic.png') });
       stage += '-worker';
       const large = { rawSignals: Array.from({ length: 10123 }, (_, i) => ({ position: {
         LatLng: `35.00°, ${125 + (i % 10) / 100}°`, timestamp: new Date(Date.UTC(2040, 0, 1) + i * 60000).toISOString(), SECRET: 'CANARY',

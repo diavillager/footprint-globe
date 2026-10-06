@@ -38,7 +38,13 @@ export function buildPreviewObjects(points: readonly Observation[], connections:
   });
   const dots = new BufferGeometry();
   dots.setAttribute('position', new Float32BufferAttribute(points.flatMap(p => globeVector(p.coordinate).multiplyScalar(100.6).toArray()), 3));
-  const dotMaterial = new PointsMaterial({ color: '#ecfff9', size: .65 });
+  // Screen-sized circles keep dense observations readable when zooming in.
+  const dotMaterial = new PointsMaterial({ color: '#ecfff9', size: 3, sizeAttenuation: false });
+  dotMaterial.onBeforeCompile = shader => {
+    shader.fragmentShader = shader.fragmentShader.replace('void main() {', `void main() {
+      if (distance(gl_PointCoord, vec2(0.5)) > 0.5) discard;
+    `);
+  };
   group.add(new Points(dots, dotMaterial)); geometries.push(dots); materials.push(dotMaterial);
   return { group, dispose: () => { geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); } };
 }
