@@ -8,5 +8,8 @@ const formatters = Object.fromEntries(['UTC', 'Asia/Seoul'].map(timeZone => [tim
 export function formatObservationTime(time: Instant, timezone: DisplayTimezone): string {
   // Keep source sub-millisecond precision without using rounded epochMs to sort.
   const fraction = time.sourceText.match(/\.(\d+)(?:Z|[+-]\d{2}:\d{2})$/)?.[1];
-  return `${formatters[timezone].format(time.epochMs)}${fraction ? `.${fraction}` : ''} ${timezone === 'UTC' ? 'UTC' : 'KST'}`;
+  // epochMs can round .999999999 into the next second. Format the exact source
+  // whole second separately, then append its original fractional digits.
+  const wholeSecondMs = Date.parse(time.sourceText.replace(/\.\d+(?=Z|[+-]\d{2}:\d{2}$)/, ''));
+  return `${formatters[timezone].format(wholeSecondMs)}${fraction ? `.${fraction}` : ''} ${timezone === 'UTC' ? 'UTC' : 'KST'}`;
 }

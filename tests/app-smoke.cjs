@@ -4,10 +4,13 @@ const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 let stage = 'startup';
 (async () => {
-  const { createServer, preview } = await import('vite');
+  const { createServer, preview, build } = await import('vite');
   const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--enable-unsafe-swiftshader'] });
-  const dev = await createServer({ server: { port: 0 } }); await dev.listen();
-  const production = await preview({ preview: { port: 0 } });
+  const define = { __MAPTILER_KEY__: JSON.stringify('synthetic-ui-test-key') };
+  const outDir = 'node_modules/.cache/ui-smoke-dist';
+  await build({ define, build: { outDir }, logLevel: 'error' });
+  const dev = await createServer({ define, server: { port: 0 } }); await dev.listen();
+  const production = await preview({ build: { outDir }, preview: { port: 0 } });
   try {
     for (const server of [dev, production]) {
       stage = server === dev ? 'development' : 'production';
@@ -59,7 +62,18 @@ let stage = 'startup';
       await page.getByRole('button',{name:'지우기',exact:true}).click();
       assert.equal(await page.getByRole('button',{name:'포인트 목록',exact:true}).isDisabled(),true);
       assert.equal(await page.getByRole('dialog').count(),0);
-      assert.equal(errors,0); assert.equal(leaked,false); assert.equal(unexpected,0);
+      assert.equal(errors,0);
+      stage += '-display-recovery';
+      const oversized = Array.from({length:23000},(_,i)=>({position:{LatLng:i%2?'0°, 180°':'0°, 0°',timestamp:new Date(Date.UTC(2040,0,1)+i*1000).toISOString()}}));
+      await page.getByLabel('JSON 올리기',{exact:true}).setInputFiles({name:'CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({rawSignals:oversized}))});
+      await page.getByRole('alert').filter({hasText:'DISPLAY_UNAVAILABLE'}).waitFor();
+      await page.getByRole('button',{name:'지우기',exact:true}).click();
+      await page.getByText('상세 지도 준비 완료',{exact:false}).waitFor({state:'attached'});
+      assert.equal(await page.getByRole('alert').count(),0);
+      await page.getByLabel('JSON 올리기',{exact:true}).setInputFiles({name:'CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({rawSignals:signals.slice(0,3)}))});
+      await page.locator('.import-status').filter({hasText:'관측 3개'}).waitFor();
+      assert.equal(await page.getByRole('alert').count(),0);
+      assert.ok(errors<=1); assert.equal(leaked,false); assert.equal(unexpected,0);
       await context.close();
       console.log(stage+' PASS: mocked map, 10123 points, fullscreen and centered dialogs, popup, timezone, import/clear/recovery');
     }

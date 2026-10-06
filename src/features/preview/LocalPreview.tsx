@@ -13,10 +13,13 @@ const errors: Record<ImportError, string> = {
   INPUT_LIMIT: '미리보기 한도(64 MiB, 원시 신호 100,000개)를 초과했습니다.',
   NO_VALID_POSITIONS: '표시할 수 있는 좌표·시각이 없습니다.', FILE_READ_FAILED: '로컬 파일을 처리하지 못했습니다.',
 };
-class GlobeBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+class GlobeBoundary extends Component<{ children: ReactNode; resetKey: string }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
-  render() { return this.state.failed ? <p role="alert">[DISPLAY_UNAVAILABLE] 지구본을 표시하지 못했습니다. WebGL을 지원하는 Chrome/Edge에서 확인하세요. 집계는 아래에서 볼 수 있습니다.</p> : this.props.children; }
+  componentDidUpdate(previous: Readonly<{ children: ReactNode; resetKey: string }>) {
+    if (this.state.failed && previous.resetKey !== this.props.resetKey) this.setState({ failed: false });
+  }
+  render() { return this.state.failed ? <p className="map-message" role="alert">[DISPLAY_UNAVAILABLE] 지도를 표시하지 못했습니다. 표시 한도를 초과했거나 WebGL을 사용할 수 없습니다. 기록을 지우거나 다른 파일을 등록해 다시 시도하세요. 목록·분포는 상단 버튼에서 확인할 수 있습니다.</p> : this.props.children; }
 }
 
 function Panel({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
@@ -74,7 +77,7 @@ export function LocalPreview() {
     } catch { stop(); setResult({ ok: false, code: 'FILE_READ_FAILED' }); }
   };
   return <main className="map-app">
-    <GlobeBoundary><Suspense fallback={<p className="map-message">지도를 준비하고 있습니다…</p>}><MapTilerGlobe points={data?.observations ?? emptyPoints} connections={connections}
+    <GlobeBoundary resetKey={data?.datasetId ?? 'empty'}><Suspense fallback={<p className="map-message">지도를 준비하고 있습니다…</p>}><MapTilerGlobe points={data?.observations ?? emptyPoints} connections={connections}
       selectedObservation={selectedObservation} focusRevision={focusRevision} timezone={timezone} candidates={candidates}
       onSelect={point => setSelectedId(point.id)} onClose={() => setSelectedId(null)}
       onPick={found => { setCandidates(found); setSelectedId(found[0]!.id); }} /></Suspense></GlobeBoundary>
