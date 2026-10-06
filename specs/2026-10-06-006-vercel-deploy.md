@@ -1,6 +1,6 @@
 # Vercel 정적 웹 배포
 
-상태: 2026-10-06 사용자가 배포 진행, 기존 화면 브랜치 정리, 배포 브랜치 생성과 이 명세 작성을 승인했다. `diavillager/footprint-globe` 프로젝트 생성과 Git 연결을 완료했다. 첫 배포의 환경 분류가 요청과 달라 Production은 일시 중지했으며 Preview 검증을 진행 중이다. 후속 PR 병합 승인은 별도다.
+상태: 2026-10-06 사용자가 배포 진행, 기존 화면 브랜치 정리, 배포 브랜치 생성과 이 명세 작성을 승인했다. `diavillager/footprint-globe` 프로젝트 생성과 Git 연결을 완료했다. 첫 배포의 환경 분류가 요청과 달라 일시 중지했으나, 사용자가 지도 키 없는 첫 배포의 제공을 허용하고 프로젝트 재개와 Preview 검증 지속을 승인했다. 후속 PR 병합과 정식 운영 배포 승인은 별도다.
 
 ## 다른 워크트리로 인계
 
@@ -81,7 +81,7 @@ Node.js 24.x는 Vercel 프로젝트 설정에서 명시적으로 선택한다. �
 
 - 프로젝트를 빈 상태로 생성한 뒤 `footprint-globe`로 이름을 변경하고 기존 GitHub 연결을 사용했다. 서버 함수·분석 SDK·저장소 기능은 추가하지 않았다.
 - `bfd4cdb`를 `Create Preview Deployment`로 요청했으나 [첫 배포](https://vercel.com/diavillager/footprint-globe/2emh3ebiFF3WcLNXSTdYiMAdbR7X)의 결과 환경은 Production이었다. 원인을 확정하지 않았으며 발견 즉시 프로젝트의 Production 제공을 일시 중지했다. PR 병합은 수행하지 않았다. 배포에는 지도 키가 없다.
-- Production 재개는 사용자 확인 중이다. Vercel의 일시 중지 안내는 Preview 배포·설정·데이터에 영향이 없다고 표시하지만, 실제 `85d51f3` Git 푸시로 생성된 [Preview](https://vercel.com/diavillager/footprint-globe/3ufCZhv5MHJFd5LqeBzJWs1413j1)는 프로젝트가 중지되어 빌드할 수 없다는 사유로 Blocked 처리됐다. 안내와 실제 동작이 충돌하므로 Preview 빌드에도 재개가 필요한 상태로 기록한다.
+- Vercel의 일시 중지 안내는 Preview 배포·설정·데이터에 영향이 없다고 표시하지만, 실제 `85d51f3` Git 푸시로 생성된 [Preview](https://vercel.com/diavillager/footprint-globe/3ufCZhv5MHJFd5LqeBzJWs1413j1)는 프로젝트가 중지되어 빌드할 수 없다는 사유로 Blocked 처리됐다. 이후 사용자가 지도 키 없는 첫 배포 제공을 허용하며 재개를 승인했고, 프로젝트 재개를 완료했다. 이 승인은 PR 병합·정식 운영 배포 승인으로 확대하지 않는다.
 - MapTiler 계정은 Free 플랜이다. 대시보드의 현재 청구 기간에는 0 requests/0 sessions와 데이터 없음이 표시됐으므로 이를 정확한 잔여 한도로 단정하지 않는다. 사용자가 기존 `footprint-globe-dev` 키의 Preview 재사용을 승인했다. localhost 허용을 유지하며 `footprint-globe-git-codex-vercel-deploy-diavillager.vercel.app`만 추가했다. 전체 Vercel 와일드카드·출처 불명 허용은 사용하지 않았다.
 - Vercel Preview의 `VITE_MAPTILER_API_KEY`는 공개 브라우저 키에 맞는 Config 형식으로 저장 완료했다. Production 키와 운영 origin은 아직 설정하지 않았다. MapTiler는 origin 변경 반영에 최대 5분이 걸릴 수 있다고 안내한다.
 - 배포 워크트리의 기본 npm 실행기는 Node.js 18을 사용해 optional native binding 설치가 누락됐다. Node.js 24로 npm CLI를 직접 실행해 `npm ci`를 다시 수행한 후 모든 검사가 통과했다. 잠금 파일은 변경하지 않았다.
