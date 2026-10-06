@@ -82,6 +82,37 @@ test('CSV row and column limits are reported separately from syntax', async () =
   assert.equal(r.csvLimitErrors, 2); assert.equal(r.csvSyntaxErrors, 0);
   assert.equal(r.partial, true); assert.equal(r.csvRows, 0);
 });
+test('CSV failure detail separates blank rows, empty tails and quote states without repair', async () => {
+  const cases = [
+    ['latitude,longitude\n\n', 'csvBlankRow', 'csvWidthErrors'],
+    ['latitude,longitude\n""\n', 'csvEmptyRow', 'csvWidthErrors'],
+    ['latitude,longitude\n0,0,', 'csvExtraEmptyTail', 'csvWidthErrors'],
+    ['latitude,longitude,\n0,0', 'csvMissingEmptyHeaderTail', 'csvWidthErrors'],
+    ['latitude,longitude\n0', 'csvShortRow', 'csvWidthErrors'],
+    ['latitude,longitude\n0,0,PRIVATE', 'csvLongRow', 'csvWidthErrors'],
+    ['latitude,longitude\n"PRIVATE', 'csvUnclosedQuote', 'csvSyntaxErrors'],
+    ['latitude,longitude\nPRIVATE"TEXT,0', 'csvQuoteInUnquoted', 'csvSyntaxErrors'],
+    ['latitude,longitude\n"PRIVATE" ,0', 'csvSpaceAfterQuote', 'csvSyntaxErrors'],
+    ['latitude,longitude\n"PRIVATE"TEXT,0', 'csvTextAfterQuote', 'csvSyntaxErrors'],
+  ];
+  for (const [source, detail, category] of cases) {
+    const r = await api.inspect([file(source, 'PRIVATE.csv')]);
+    assert.equal(r[detail], 1, detail); assert.equal(r[category], 1, detail);
+    assert.equal(cases.reduce((sum, [, key]) => sum + r[key], 0), 1, detail);
+    assert.equal(r.inspectedFiles, 0); assert.equal(r.coordinateCandidates, 0);
+    assert.doesNotMatch(JSON.stringify(r) + api.format(r), /PRIVATE|latitude|longitude/);
+  }
+});
+
+test('CSV detail counts only first failure per file and handles CRLF and valid quoted content', async () => {
+  const failed = await api.inspect([file('latitude,longitude\r\n0,0\r\n\r\n"PRIVATE', 'a.csv')]);
+  assert.equal(failed.csvBlankRow, 1); assert.equal(failed.csvUnclosedQuote, 0);
+  assert.equal(failed.csvRows, 0); assert.equal(failed.coordinateCandidates, 0);
+  const valid = await api.inspect([file('latitude,longitude,note,\r\n0,0,"PRIVATE,\r\n""TEXT""",\r\n', 'a.csv')]);
+  assert.equal(valid.csvFiles, 1); assert.equal(valid.csvRows, 1); assert.equal(valid.coordinateCandidates, 1);
+  assert.equal(valid.csvWidthErrors, 0); assert.equal(valid.csvSyntaxErrors, 0);
+});
+
 test('read errors and arbitrary identifiers never appear in output or progress', async () => {
   const progress = [];
   const r = await api.inspect([file('{PRIVATE_RAW'), file('', 'PRIVATE.csv', { text: async () => { throw new Error('PRIVATE_EXCEPTION'); } }),
