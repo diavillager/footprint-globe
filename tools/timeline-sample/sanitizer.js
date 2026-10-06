@@ -103,6 +103,85 @@
     NO_RECOGNIZED_CONTAINER: '검사 범위에서 알려진 기록 컨테이너를 확인하지 못했습니다. 원본 값을 추측해 복사하지 않습니다.'
   });
 
+  const AUDIT_KINDS = Object.freeze({ visit: '방문', activity: '이동', path: '상세 경로', rawPosition: '위치 관측' });
+  // Candidates are structural evidence only, never permission to copy values.
+  function candidateKinds(record) {
+    if (!isObject(record)) return [];
+    const kinds = [];
+    if (own(record, 'visit') || own(record, 'placeVisit')) kinds.push('visit');
+    if (own(record, 'activity') || own(record, 'activitySegment')) kinds.push('activity');
+    if (own(record, 'timelinePath') || (isObject(record.activitySegment) &&
+      (own(record.activitySegment, 'waypointPath') || own(record.activitySegment, 'simplifiedRawPath')))) kinds.push('path');
+    if (own(record, 'position')) kinds.push('rawPosition');
+    return kinds;
+  }
+  function auditSource(data, selectedKey) {
+    const bucket = () => ({ visit: 0, activity: 0, path: 0, rawPosition: 0, wifiScan: 0, activityRecord: 0 });
+    const info = { version: 1, scannedNodes: 0, scanLimited: false,
+      selectedArea: bucket(), otherArea: bucket(),
+      stages: Object.fromEntries(Object.keys(AUDIT_KINDS).map(k => [k, { candidates: 0, validated: 0, excluded: 0, selected: 0, reasons: {} }])),
+      recordsInspected: 0, recordsComplete: false, sampleSaved: false };
+    function* walkNodes(node, depth = 0) {
+      yield node;
+      if (!node || typeof node !== 'object') return;
+      if (depth >= 32) { if (Object.keys(node).length) info.scanLimited = true; return; }
+      if (Array.isArray(node)) { for (const child of node) yield* walkNodes(child, depth + 1); }
+      else { for (const key of Object.keys(node)) yield* walkNodes(node[key], depth + 1); }
+    }
+    const roots = Array.isArray(data) ? [{ iterator: walkNodes(data), counts: info.selectedArea }] :
+      isObject(data) ? Object.keys(data).slice(0, 10000).map(key => ({ iterator: walkNodes(data[key]),
+        counts: key === selectedKey ? info.selectedArea : info.otherArea })) : [];
+    if (isObject(data) && Object.keys(data).length > 10000) info.scanLimited = true;
+    if (isObject(data)) roots.unshift({ iterator: [data][Symbol.iterator](), counts: info.otherArea });
+    // Round robin keeps a large rawSignals array from hiding a sibling container.
+    let active = roots;
+    while (active.length && info.scannedNodes < 2000000) {
+      const next = [];
+      for (const entry of active) {
+        if (info.scannedNodes >= 2000000) { info.scanLimited = true; break; }
+        const item = entry.iterator.next();
+        if (item.done) continue;
+        next.push(entry);
+        info.scannedNodes++;
+        const node = item.value, counts = entry.counts;
+        if (!isObject(node)) continue;
+        if (isObject(node.visit) || isObject(node.placeVisit)) counts.visit++;
+        if (isObject(node.activity) || isObject(node.activitySegment)) counts.activity++;
+        if (Array.isArray(node.timelinePath)) counts.path++;
+        if (isObject(node.waypointPath) && Array.isArray(node.waypointPath.waypoints)) counts.path++;
+        if (isObject(node.simplifiedRawPath) && Array.isArray(node.simplifiedRawPath.points)) counts.path++;
+        if (isObject(node.position) && typeof node.position.timestamp === 'string' &&
+          (typeof node.position.LatLng === 'string' || typeof node.position.latLng === 'string')) counts.rawPosition++;
+        if (own(node, 'wifiScan')) counts.wifiScan++;
+        if (own(node, 'activityRecord')) counts.activityRecord++;
+      }
+      active = next;
+    }
+    if (active.length) info.scanLimited = true;
+    return info;
+  }
+  function formatAudit(info) {
+    const describe = counts => `방문=${counts.visit}, 이동=${counts.activity}, 상세 경로=${counts.path}, 위치 관측=${counts.rawPosition}, Wi-Fi 신호=${counts.wifiScan}, 활동 감지 신호=${counts.activityRecord}`;
+    return ['', '원본·샘플 비교 진단 v1 — 값·파일명·임의 필드명은 포함하지 않습니다.',
+      `구조 검사 노드: ${info.scannedNodes}, 일부만 검사: ${info.scanLimited ? '예' : '아니오'}`,
+      `선택한 기록 영역의 구조 후보: ${describe(info.selectedArea)}`,
+      `샘플 대상 밖 영역의 구조 후보: ${describe(info.otherArea)}`,
+      `변환 대상 기록 검사: ${info.recordsInspected}, 전체 완료: ${info.recordsComplete ? '예' : '아니오'}`,
+      ...Object.entries(AUDIT_KINDS).map(([kind, label]) => {
+        const s = info.stages[kind];
+        return `${label} 기록: 필드 후보=${s.candidates}, 검증 통과=${s.validated}, 안전상 제외=${s.excluded}, 크기로 미선택=${s.validated - s.selected}, 최종 샘플=${info.sampleSaved ? s.selected : 0}`;
+      }),
+      ...Object.entries(AUDIT_KINDS).flatMap(([kind, label]) => Object.entries(info.stages[kind].reasons)
+        .map(([code, count]) => `${label} 제외 [${code}]: ${count}건`)),
+      ...(info.otherArea.visit || info.otherArea.activity || info.otherArea.path ?
+        ['[OUTSIDE_SAMPLE_CANDIDATE] 샘플 대상 밖에서 방문·이동·경로 구조 후보를 발견했습니다. 변환 지원이나 실제 경로임을 확인한 것은 아닙니다.'] : []),
+      ...(!info.selectedArea.path && !info.otherArea.path ?
+        ['[NO_KNOWN_PATH_CANDIDATE] 검사 범위에서 알려진 상세 경로 구조를 찾지 못했습니다. 원본에 경로가 없다는 뜻은 아닙니다.'] : []),
+      '[UNKNOWN_STRUCTURE_UNRESOLVED] 모르는 구조와 문자열 안의 데이터는 해석하지 않습니다. 후보 수는 중첩을 포함하며 기록 수와 다를 수 있습니다. 활동 감지 신호는 확정 이동 경로가 아닙니다.',
+      ...(!info.sampleSaved ? ['[NO_SAMPLE_SAVED] 생성이 중단되어 최종 샘플은 없습니다.'] : []),
+      '치환·선택 정책은 이전과 같습니다. 두 샘플이 같아도 정상입니다. 공유 전 확인을 마친 이전·새 샘플과 이 진단 전체를 함께 제공하면 비교할 수 있습니다.'];
+  }
+
   function parseISO(value) {
     if (typeof value !== 'string') fail('INVALID_TIME');
     const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$/.exec(value);
@@ -328,13 +407,16 @@
       if (typeof input !== 'string' || new TextEncoder().encode(input).length > LIMITS.inputBytes) fail('INPUT_LIMIT');
       let data;
       try { data = JSON.parse(input.replace(/^\uFEFF/, '')); } catch { fail('INVALID_JSON'); }
+      const selectedKeys = isObject(data) ? ['semanticSegments', 'timelineObjects'].filter(k => own(data, k)) : [];
+      const auditKey = selectedKeys.length === 1 ? selectedKeys[0] : selectedKeys.length === 0 && isObject(data) && own(data, 'rawSignals') ? 'rawSignals' : undefined;
+      report.audit = auditSource(data, auditKey);
       const rootFailure = code => { report.structure = diagnoseStructure(data); fail(code); };
       let records, rootKey, legacy = false, rawMode = false;
       report.rootType = Array.isArray(data) ? '배열' : isObject(data) ? '객체' : '기타';
       if (Array.isArray(data)) { records = data; report.format = '기기 Timeline 배열'; }
       else if (isObject(data)) {
         // Only fixed, allowlisted names reach diagnostics. Never reflect unknown
-        // keys (which can themselves contain personal data), or traverse their values.
+        // keys (which can themselves contain personal data). Audit only emits counts.
         const present = ['semanticSegments', 'timelineObjects'].filter(key => own(data, key));
         if (own(data, 'rawSignals')) report.knownRootFields.rawSignals = Array.isArray(data.rawSignals) ? '배열' : '배열 아님';
         for (const key of present) report.knownRootFields[key] = Array.isArray(data[key]) ? '배열' : '배열 아님';
@@ -353,6 +435,9 @@
       const valid = [];
       const represented = new Set();
       for (let i = 0; i < records.length; i++) {
+        const candidates = candidateKinds(records[i]);
+        report.audit.recordsInspected++;
+        candidates.forEach(k => report.audit.stages[k].candidates++);
         try {
           const counts = { omittedArrayItems: 0 };
           if (rawMode && (!isObject(records[i]) || !own(records[i], 'position'))) fail('UNSUPPORTED_RAW_SIGNAL');
@@ -360,14 +445,24 @@
           if (rawMode && ['LatLng', 'latLng'].filter(key => own(template.position, key)).length !== 1) fail('INVALID_COORDINATE');
           const kinds = rawMode ? ['rawPosition'] : classify(template, legacy);
           report.processedRecords++;
+          kinds.forEach(k => report.audit.stages[k].validated++);
           // Retain only the first records and first representative of each kind.
           // Still validate every input record, without keeping every template alive.
           if (report.processedRecords <= LIMITS.records || kinds.some(kind => !represented.has(kind))) {
             valid.push({ template, kinds, counts, index: i });
           }
           kinds.forEach(kind => represented.add(kind));
-        } catch (error) { report.excludedRecords++; reason(error.message); }
+        } catch (error) {
+          report.excludedRecords++; reason(error.message);
+          const code = own(REASONS, error.message) ? error.message : 'INTERNAL_FAILURE';
+          candidates.forEach(k => {
+            const stage = report.audit.stages[k];
+            stage.excluded++;
+            stage.reasons[code] = (stage.reasons[code] || 0) + 1;
+          });
+        }
       }
+      report.audit.recordsComplete = true;
       // Include representatives of all available supported record kinds first.
       const chosen = new Set();
       for (const kind of rawMode ? ['rawPosition'] : ['visit', 'activity', 'path']) {
@@ -377,6 +472,7 @@
       for (const record of valid) { if (chosen.size >= LIMITS.records) break; chosen.add(record); }
       const selected = [...chosen].sort((a, b) => a.index - b.index);
       const kinds = selected.flatMap(v => v.kinds);
+      kinds.forEach(k => report.audit.stages[k].selected++);
       if (rawMode) {
         if (!kinds.includes('rawPosition')) { report.structure = diagnoseStructure(data); fail('NO_SAFE_RAW_POSITION'); }
       } else if (!kinds.includes('visit') || !(kinds.includes('activity') || kinds.includes('path'))) fail('INSUFFICIENT_COVERAGE');
@@ -393,6 +489,7 @@
       const text = JSON.stringify(rootKey ? { [rootKey]: output } : output, null, 2) + '\n';
       report.outputBytes = new TextEncoder().encode(text).length;
       if (report.outputBytes > LIMITS.outputBytes) fail('OUTPUT_LIMIT');
+      report.audit.sampleSaved = true;
       return { ok: true, text, report };
     } catch (error) {
       reason(error.message);
@@ -410,7 +507,8 @@
       `배열 축소 항목: ${report.omittedArrayItems}`, `가상 좌표 쌍: ${report.coordinatePairs}`, `출력 크기: ${report.outputBytes} bytes`,
       ...Object.entries(report.reasons).map(([code, count]) => `[${code}] ${REASONS[code]} (${count}건)`),
       ...report.warnings.map(w => `안내: ${w}`),
-      ...(report.structure ? formatStructure(report.structure) : [])
+      ...(report.structure ? formatStructure(report.structure) : []),
+      ...(report.audit ? formatAudit(report.audit) : [])
     ].join('\n');
   }
   function formatStructure(info) {

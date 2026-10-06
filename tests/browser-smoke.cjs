@@ -31,6 +31,7 @@ const rawFixture = require('./raw-signal-fixtures.cjs');
       await page.locator('#source').setInputFiles({ name: 'synthetic-only.json', mimeType: 'application/json', buffer: Buffer.from(input) });
       await page.waitForFunction(() => !document.getElementById('save').disabled);
       assert.equal(await page.locator('#source').inputValue(), '');
+      assert.match(await page.locator('#status').textContent(), /원본·샘플 비교 진단 v1/);
       assert.doesNotMatch(await page.locator('#status').textContent(), /FICTIONAL_|CANARY|2022-|SECRET|33\.125/);
       if (input === extraMetadata) assert.match(await page.locator('#status').textContent(), /제외한 최상위 필드: 2/);
       if (input === rawInput) {
