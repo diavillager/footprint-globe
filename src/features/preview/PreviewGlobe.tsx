@@ -8,6 +8,8 @@ import { buildPreviewObjects } from './geometry';
 import { land } from '../../assets/land';
 
 interface Props { points: readonly Observation[]; connections: readonly Connection[]; differentiated: boolean; thresholdSeconds: number }
+const MIN_ALTITUDE = .015;
+const MAX_ALTITUDE = 4;
 export function PreviewGlobe({ points, connections, differentiated, thresholdSeconds }: Props) {
   const globe = useRef<GlobeMethods | undefined>(undefined);
   const container = useRef<HTMLDivElement>(null);
@@ -16,12 +18,18 @@ export function PreviewGlobe({ points, connections, differentiated, thresholdSec
   const [failed, setFailed] = useState(false);
   const material = useMemo(() => new MeshPhongMaterial({ color: '#102d45', shininess: 6 }), []);
   const home = () => {
+    // Wheel/pinch controls otherwise allow the camera inside the raised trace layer.
+    const view = globe.current;
+    if (view) {
+      view.controls().minDistance = view.getGlobeRadius() * (1 + MIN_ALTITUDE);
+      view.controls().maxDistance = view.getGlobeRadius() * (1 + MAX_ALTITUDE);
+    }
     const first = points[0];
     globe.current?.pointOfView({ lat: first?.coordinate.latitude ?? 25, lng: first?.coordinate.longitude ?? 125, altitude: 1.7 }, 0);
   };
   const zoom = (factor: number) => {
     const current = globe.current?.pointOfView();
-    if (current) globe.current?.pointOfView({ ...current, altitude: Math.max(.015, Math.min(4, current.altitude * factor)) }, 250);
+    if (current) globe.current?.pointOfView({ ...current, altitude: Math.max(MIN_ALTITUDE, Math.min(MAX_ALTITUDE, current.altitude * factor)) }, 250);
   };
   useEffect(() => {
     const observer = new ResizeObserver(entries => setWidth(Math.max(280, entries[0]?.contentRect.width ?? 700)));

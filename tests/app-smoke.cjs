@@ -51,6 +51,30 @@ let stage = 'startup';
       await page.mouse.up();
       await page.waitForTimeout(500);
       if (server === production) await page.locator('canvas').screenshot({ path: path.join(os.tmpdir(), 'footprint-preview-orbit-synthetic.png') });
+      // Reset to the authored first point, then exercise wheel zoom beyond the button limit.
+      await page.getByRole('button', { name: '처음 위치로', exact: true }).click();
+      await page.mouse.move(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2);
+      for (let zoom = 0; zoom < 18; zoom++) {
+        await page.mouse.wheel(0, -1000);
+        await page.waitForTimeout(100);
+      }
+      await page.waitForTimeout(500);
+      if (server === production) await page.locator('canvas').screenshot({ path: path.join(os.tmpdir(), 'footprint-preview-wheel-synthetic.png') });
+      const zoomImage = await page.locator('canvas').screenshot();
+      const visible = await page.evaluate(async bytes => {
+        const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: 'image/png' }));
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width; canvas.height = bitmap.height;
+        const ctx = canvas.getContext('2d'); ctx.drawImage(bitmap, 0, 0); bitmap.close();
+        const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        let dots = 0, lines = 0;
+        for (let i = 0; i < pixels.length; i += 4) {
+          if (pixels[i] > 220 && pixels[i + 1] > 230 && pixels[i + 2] > 220) dots++;
+          if (pixels[i] > 180 && pixels[i + 1] > 90 && pixels[i + 2] < 180) lines++;
+        }
+        return { dots, lines };
+      }, Array.from(zoomImage));
+      assert.ok(visible.dots > 0 && visible.lines > 10, 'Synthetic points and lines remain visible at maximum wheel zoom');
       stage += '-worker';
       const large = { rawSignals: Array.from({ length: 10123 }, (_, i) => ({ position: {
         LatLng: `35.00°, ${125 + (i % 10) / 100}°`, timestamp: new Date(Date.UTC(2040, 0, 1) + i * 60000).toISOString(), SECRET: 'CANARY',
