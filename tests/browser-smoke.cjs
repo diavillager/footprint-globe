@@ -43,13 +43,19 @@ const fixtures = require('./synthetic-fixtures.cjs');
       assert.ok(Buffer.byteLength(output) <= 65536);
       await download.delete();
     }
+    await page.locator('#source').setInputFiles({ name: 'synthetic-wrapped.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ SECRET_WRAPPER: fixtures.modern() })) });
+    await page.waitForFunction(() => document.getElementById('status').textContent.includes('구조 진단 v1'));
+    assert.equal(await page.locator('#save').isDisabled(), true);
+    const diagnosis = await page.locator('#status').textContent();
+    assert.match(diagnosis, /NESTED_RECORD_FIELD/);
+    assert.doesNotMatch(diagnosis, /SECRET|FICTIONAL|2022-|11\.250000/);
     await page.locator('#source').setInputFiles({ name: 'synthetic-bad.json', mimeType: 'application/json', buffer: Buffer.from('{"SECRET_SYNTHETIC":') });
     await page.waitForFunction(() => document.getElementById('status').textContent.includes('생성 중단'));
     assert.equal(await page.locator('#save').isDisabled(), true);
     assert.doesNotMatch(await page.locator('#status').textContent(), /SECRET/);
     assert.equal(externalRequests, 0);
     assert.equal(pageErrors, 0);
-    process.stdout.write('Browser smoke passed: 3 synthetic formats, large export, safe root exclusions, 5 downloads, invalid-input recovery, 0 external requests, 0 page errors.\n');
+    process.stdout.write('Browser smoke passed: 3 synthetic formats, large export, safe root exclusions, 5 downloads, private structure diagnostics, invalid-input recovery, 0 external requests, 0 page errors.\n');
     await context.close();
   } finally { await browser.close(); }
 })().catch(() => { process.stderr.write('Browser smoke failed. Only synthetic inputs were used.\n'); process.exitCode = 1; });

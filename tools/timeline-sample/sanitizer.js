@@ -45,6 +45,57 @@
   }, ['startLocation', 'endLocation', 'duration']);
   const legacyRecord = O({ placeVisit: legacyVisit, activitySegment: legacyActivity });
 
+  // Structural diagnosis is not a parser and never authorizes sample generation.
+  // Only these fixed field names, JSON types and aggregate counts can leave it.
+  const DIAGNOSTIC_FIELDS = Object.freeze(['semanticSegments', 'timelineObjects', 'locations', 'rawSignals', 'timelineEdits',
+    'visit', 'activity', 'timelinePath', 'placeVisit', 'activitySegment', 'latitudeE7', 'longitudeE7', 'timestampMs', 'startTime', 'endTime']);
+  const valueType = value => value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
+  const emptyTypes = () => ({ object: 0, array: 0, string: 0, number: 0, boolean: 0, null: 0 });
+  function diagnoseStructure(data) {
+    const info = { version: 1, topLevelTypes: emptyTypes(), knownFields: Object.create(null), scannedNodes: 0,
+      scanLimited: false, recordShapes: { semantic: 0, legacy: 0, rawCoordinate: 0 }, hints: [] };
+    const rootKeys = isObject(data) ? Object.keys(data) : [];
+    for (const key of rootKeys) info.topLevelTypes[valueType(data[key])]++;
+    function* children(node) {
+      if (Array.isArray(node)) { for (const child of node) yield child; }
+      else { for (const key of Object.keys(node)) yield node[key]; }
+    }
+    const stack = [{ iterator: [data][Symbol.iterator](), depth: 0 }];
+    while (stack.length && info.scannedNodes < 12000) {
+      const frame = stack[stack.length - 1], next = frame.iterator.next();
+      if (next.done) { stack.pop(); continue; }
+      info.scannedNodes++;
+      const node = next.value;
+      if (node === null || typeof node !== 'object') continue;
+      if (isObject(node)) {
+        for (const key of DIAGNOSTIC_FIELDS) {
+          if (!own(node, key)) continue;
+          if (!own(info.knownFields, key)) info.knownFields[key] = { root: 0, nested: 0, types: emptyTypes() };
+          const field = info.knownFields[key];
+          field[frame.depth === 0 ? 'root' : 'nested']++;
+          field.types[valueType(node[key])]++;
+        }
+        if (own(node, 'startTime') && own(node, 'endTime') && ['visit', 'activity', 'timelinePath'].some(key => own(node, key))) info.recordShapes.semantic++;
+        if (own(node, 'placeVisit') || own(node, 'activitySegment')) info.recordShapes.legacy++;
+        if (own(node, 'latitudeE7') && own(node, 'longitudeE7')) info.recordShapes.rawCoordinate++;
+      }
+      if (frame.depth >= 10) { info.scanLimited = true; continue; }
+      stack.push({ iterator: children(node), depth: frame.depth + 1 });
+    }
+    if (stack.length) info.scanLimited = true;
+    if (['semanticSegments', 'timelineObjects'].some(key => info.knownFields[key]?.nested)) info.hints.push('NESTED_RECORD_FIELD');
+    if (info.knownFields.locations || info.recordShapes.rawCoordinate) info.hints.push('RAW_COORDINATE_STRUCTURE');
+    if (info.knownFields.timelineEdits) info.hints.push('TIMELINE_EDITS_STRUCTURE');
+    if (!info.hints.length) info.hints.push('NO_RECOGNIZED_CONTAINER');
+    return info;
+  }
+  const DIAGNOSTIC_HINTS = Object.freeze({
+    NESTED_RECORD_FIELD: '알려진 기록 필드가 중첩되어 있습니다. 현재 변환기는 이 바깥 구조를 지원하지 않습니다.',
+    RAW_COORDINATE_STRUCTURE: '원시 좌표 형태의 필드가 발견됐습니다. 이를 방문 기록으로 추론하지 않습니다.',
+    TIMELINE_EDITS_STRUCTURE: '편집 기록 형태의 필드가 발견됐습니다. 현재 변환기의 지원 대상은 아닙니다.',
+    NO_RECOGNIZED_CONTAINER: '검사 범위에서 알려진 기록 컨테이너를 확인하지 못했습니다. 원본 값을 추측해 복사하지 않습니다.'
+  });
+
   function parseISO(value) {
     if (typeof value !== 'string') fail('INVALID_TIME');
     const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$/.exec(value);
@@ -268,6 +319,7 @@
       if (typeof input !== 'string' || new TextEncoder().encode(input).length > LIMITS.inputBytes) fail('INPUT_LIMIT');
       let data;
       try { data = JSON.parse(input.replace(/^\uFEFF/, '')); } catch { fail('INVALID_JSON'); }
+      const rootFailure = code => { report.structure = diagnoseStructure(data); fail(code); };
       let records, rootKey, legacy = false;
       report.rootType = Array.isArray(data) ? '배열' : isObject(data) ? '객체' : '기타';
       if (Array.isArray(data)) { records = data; report.format = '기기 Timeline 배열'; }
@@ -276,14 +328,14 @@
         // keys (which can themselves contain personal data), or traverse their values.
         const present = ['semanticSegments', 'timelineObjects'].filter(key => own(data, key));
         for (const key of present) report.knownRootFields[key] = Array.isArray(data[key]) ? '배열' : '배열 아님';
-        if (present.length > 1) fail('AMBIGUOUS_ROOT');
-        if (!present.length) fail('UNSUPPORTED_ROOT');
+        if (present.length > 1) rootFailure('AMBIGUOUS_ROOT');
+        if (!present.length) rootFailure('UNSUPPORTED_ROOT');
         rootKey = present[0];
-        if (!Array.isArray(data[rootKey])) fail('ROOT_FIELD_TYPE');
+        if (!Array.isArray(data[rootKey])) rootFailure('ROOT_FIELD_TYPE');
         records = data[rootKey]; legacy = rootKey === 'timelineObjects'; report.format = rootKey;
         report.excludedRootFields = Object.keys(data).length - 1;
         if (report.excludedRootFields) report.reasons.EXCLUDED_ROOT_FIELD = report.excludedRootFields;
-      } else fail('UNSUPPORTED_ROOT');
+      } else rootFailure('UNSUPPORTED_ROOT');
       report.inputRecords = records.length;
       if (records.length > LIMITS.inputRecords) fail('INPUT_LIMIT');
       const valid = [];
@@ -339,8 +391,24 @@
       `샘플 기록: ${report.outputRecords} (방문 ${report.visits}, 이동 ${report.activities}, 상세 경로 ${report.paths})`,
       `배열 축소 항목: ${report.omittedArrayItems}`, `가상 좌표 쌍: ${report.coordinatePairs}`, `출력 크기: ${report.outputBytes} bytes`,
       ...Object.entries(report.reasons).map(([code, count]) => `[${code}] ${REASONS[code]} (${count}건)`),
-      ...report.warnings.map(w => `안내: ${w}`)
+      ...report.warnings.map(w => `안내: ${w}`),
+      ...(report.structure ? formatStructure(report.structure) : [])
     ].join('\n');
+  }
+  function formatStructure(info) {
+    const types = counts => Object.entries(counts).filter(([, count]) => count).map(([type, count]) => `${type}=${count}`).join(', ') || '없음';
+    return [
+      '', '구조 진단 v1 — 원본 값·임의 필드명은 포함하지 않습니다.',
+      `최상위 필드 자료형 집계: ${types(info.topLevelTypes)}`,
+      `검사 노드: ${info.scannedNodes}, 일부만 검사: ${info.scanLimited ? '예 (건수는 검사 범위 기준)' : '아니오'}`,
+      ...DIAGNOSTIC_FIELDS.filter(key => own(info.knownFields, key)).map(key => {
+        const field = info.knownFields[key];
+        return `고정 진단 필드 ${key}: 최상위=${field.root}, 중첩=${field.nested}, ${types(field.types)}`;
+      }),
+      `기록 형태 후보: 기기=${info.recordShapes.semantic}, 구형=${info.recordShapes.legacy}, E7 좌표쌍=${info.recordShapes.rawCoordinate}`,
+      ...info.hints.map(code => `[${code}] ${DIAGNOSTIC_HINTS[code]}`),
+      '필드 존재와 자료형만 검사한 결과이며 파일 형식이나 호환성 확정은 아닙니다. 이 구조 진단 부분만 공유해 주세요.'
+    ];
   }
   const api = Object.freeze({ LIMITS, sanitizeText, formatReport });
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
