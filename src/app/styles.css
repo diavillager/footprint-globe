@@ -1,6 +1,6 @@
 :root { font-family: system-ui, sans-serif; color: #dce7ec; background: #101c27; line-height: 1.7; }
 body { margin: 0; }
-main { max-width: 780px; margin: 10vh auto; padding: 24px; }
+main { max-width: 1120px; margin: 32px auto; padding: 24px; }
 h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.25; }
 .eyebrow { color: #8dd4c7; letter-spacing: .16em; font-size: .85rem; }
 section { margin-top: 40px; padding: 24px; background: #192a38; border: 1px solid #38515e; border-radius: 16px; }
@@ -8,3 +8,30 @@ h2 { margin-top: 0; font-size: 1.2rem; }
 dl { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 dd { margin: 0; }
 .note { color: #b7c7ce; font-size: .9rem; }
+button, input { font: inherit; }
+button, .file-button { background: #244457; color: #f2fffc; padding: 9px 16px; border: 1px solid #668997; border-radius: 8px; cursor: pointer; }
+button:disabled { opacity: .45; cursor: default; }
+button:focus-visible, input:focus-visible, .file-button:focus-within { outline: 3px solid #8dd4c7; outline-offset: 3px; }
+.file-panel { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.file-panel p { flex-basis: 100%; margin-bottom: 0; }
+.file-button { position: relative; display: inline-block; }
+.file-button input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+[role=status] { margin: 24px 0 12px; font-size: 1.15rem; color: #9de6d8; }
+[role=alert] { color: #ffc07b; }
+fieldset { border: 0; margin: 0 0 16px; padding: 0; }
+legend { font-weight: 700; margin-bottom: 8px; }
+fieldset label { display: inline-flex; gap: 8px; margin: 0 24px 8px 0; align-items: center; }
+.threshold { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.threshold input { width: 100px; padding: 6px; color: #fff; background: #101c27; border: 1px solid #668997; border-radius: 4px; }
+.globe-wrap { overflow: hidden; background: #0a1420; border-radius: 12px; }
+.globe-tools { display: flex; align-items: center; gap: 12px; padding: 12px; flex-wrap: wrap; }
+.solid { color: #69e6d0; } .dashed { color: #ffc07b; }
+.distributions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.histogram { margin: 0; padding: 18px; }
+.histogram h3 { margin-top: 0; }
+.histogram table { width: 100%; border-collapse: collapse; text-align: left; font-size: .85rem; }
+.histogram th, .histogram td { padding: 6px; border-bottom: 1px solid #38515e; }
+.histogram td:nth-child(2) { width: 35%; }
+.bar { height: 9px; background: #69e6d0; border-radius: 3px; }
+footer { margin: 36px 0; font-size: .9rem; color: #b7c7ce; }
+@media(max-width: 720px) { main { padding: 12px; } section { padding: 14px; } .distributions { grid-template-columns: 1fr; } }
