@@ -1,6 +1,6 @@
 # Vercel 정적 웹 배포
 
-상태: 2026-10-06 `diavillager/footprint-globe` 프로젝트 생성·Git 연결·Preview 배포를 완료했다. 첫 배포의 환경 분류가 요청과 달라 일시 중지했으나, 사용자가 지도 키 없는 첫 배포의 제공을 허용하고 프로젝트 재개와 Preview 검증 지속을 승인했다. Chrome 파일 접근 권한 변경 없이 현재 검증 범위까지 진행하도록 사용자가 확정했으므로 원격 파일 등록 검증은 미수행으로 남긴다. 이후 사용자가 Production 재배포와 localhost·Preview 키 설정 정리를 승인했고 아래 최신 결과를 반영했다. 사용자는 최종 검토에 문제가 없으면 PR #12를 병합하도록 승인했다.
+상태: 2026-10-06 `diavillager/footprint-globe` 프로젝트 생성·Git 연결·Preview 배포를 완료했다. 첫 배포의 환경 분류가 요청과 달라 일시 중지했으나, 사용자가 지도 키 없는 첫 배포의 제공을 허용하고 프로젝트 재개와 Preview 검증 지속을 승인했다. Chrome 파일 접근 권한 변경 없이 현재 검증 범위까지 진행하도록 사용자가 확정했으므로 당시 원격 파일 등록 검증을 생략했다. 이후 별도 Edge 합성 검증을 완료했으며 아래 후속 결과를 따른다. 이후 사용자가 Production 재배포와 localhost·Preview 키 설정 정리를 승인했고 아래 최신 결과를 반영했다. 사용자는 최종 검토에 문제가 없으면 PR #12를 병합하도록 승인했다.
 
 ## 다른 워크트리로 인계
 
@@ -69,24 +69,25 @@ Node.js 24.x는 Vercel 프로젝트 설정에서 명시적으로 선택한다. �
 - [x] 대상 계정 확인: https://vercel.com/diavillager, 새 프로젝트 생성 승인
 - [x] 실제 프로젝트 생성·연결: [Vercel 프로젝트](https://vercel.com/diavillager/footprint-globe), GitHub `diavillager/footprint-globe`, Vite, Node.js 24.x, Production 추적 `main`
 - [x] 운영 도메인 `footprint-globe.vercel.app` 연결 및 MapTiler 허용 origin 추가
-- [ ] MapTiler 운영 사용량·잔여 한도 확인
+- [x] MapTiler Free 플랜·사용량·Account 툴팁의 저장/처리/개수 한도 확인(아래 결과)
+- [ ] 지도 열람 requests 자체의 잔여 횟수 확인: Account의 지도 개수·처리 한도와 구별
 - [x] 로컬 `npm run check`: 타입 검사·116개 테스트·빌드 통과(설정 초안 작성 후 수행, 큰 지도 번들 경고 유지)
 - [x] 배포 워크트리에서 Node.js 24.19.0으로 `npm run check` 및 Edge `node tests/app-smoke.cjs` 통과(합성 응답, 개발·빌드 화면)
 - [x] Preview Ready와 실제 지도·한반도 초기 뷰·CSP 메타·이용 안내·390×844 화면의 모달과 페이지 스크롤 없음 확인(Chrome)
 - 원격 합성 JSON 등록·관측 선택·시간대·초기화·기록 미복원 검증은 Chrome 확장 파일 접근 권한으로 차단됐다. 사용자가 권한 변경 없이 현재 범위에서 진행하도록 결정했다. 로컬 Edge 합성 smoke 통과와 구별한다.
 - [x] 사용자 승인에 따른 Production 재배포와 지도 로딩 확인
-- [ ] PR 검토·승인된 병합
-- [ ] 운영 URL에서 합성 전체 흐름·개인정보 처리 검증
+- [x] PR #12 검토·승인된 병합: GitHub에서 2026-10-06 병합과 `main`의 `e9d73a8` 반영 확인
+- [x] 운영 URL에서 합성 전체 흐름·개인정보 처리 검증: 아래 후속 검증 범위와 한계 참조
 
 사용자 실제 기록은 에이전트가 읽지 않는다. 실제 입력 호환성은 사용자가 배포 화면에서 직접 확인하며 합성 검증과 구별한다. 유료 예산·커스텀 도메인·추가 브라우저 지원은 임의로 확정하지 않는다.
 
-## 최신 운영 상태
+## 배포 당시 운영 상태와 후속 갱신
 
 - 사용자 요청으로 기존 Production 소스 `bfd4cdb`를 최신 환경변수로 캐시 없이 재배포했다. [Production 배포](https://vercel.com/diavillager/footprint-globe/7Cx2S4TYEn87ddJT8hS8oYN5YjTj)는 Ready다. 해당 소스와 현재 브랜치의 차이는 README·이 명세뿐이다.
-- [운영 주소](https://footprint-globe.vercel.app/)에서 HTTPS 200·X-Frame-Options DENY·실제 지도·한반도 초기 화면을 확인했다. 실제 사용자 파일은 읽지 않았고 원격 파일 등록 검증은 기존 제한대로 미수행이다.
+- [운영 주소](https://footprint-globe.vercel.app/)에서 HTTPS 200·X-Frame-Options DENY·실제 지도·한반도 초기 화면을 확인했다. 실제 사용자 파일은 읽지 않았다. 당시 생략한 원격 파일 등록은 아래 후속 합성 검증에서 확인했다.
 - 기존 키의 MapTiler 허용 origin은 `footprint-globe.vercel.app`만 남겼다. `localhost`, `127.0.0.1`, Preview 브랜치 주소는 제거했으며 저장 성공을 확인했다. 공급자는 반영에 최대 5분을 안내한다.
 - Vercel `VITE_MAPTILER_API_KEY` 적용 환경도 Production만 남겼다. 기존 Preview 빌드의 키 문자열은 소급 제거되지 않지만 origin 제한으로 지도 사용을 차단한다. Preview 배포 이력·Git 연동·로컬 파일은 삭제하지 않았다.
-- 아래 진행 기록은 과거 단계의 이력이다. 현재 Production에는 지도 키가 반영돼 있다. PR 병합은 하지 않았다.
+- 아래 진행 기록은 과거 단계의 이력이다. 현재 Production에는 지도 키가 반영돼 있고 PR #12도 병합됐다. 이후 검증 변경의 병합 승인은 별개다.
 
 ## 원격 진행 기록
 
@@ -99,7 +100,7 @@ Node.js 24.x는 Vercel 프로젝트 설정에서 명시적으로 선택한다. �
 - 사용자 승인으로 `footprint-globe.vercel.app`을 Production 환경에 연결했다. Vercel의 Valid Configuration과 HTTPS 200을 확인했다. 기존 `project-z82gt.vercel.app`은 유지했다. 도메인 연결 당시에는 지도 키 없는 기존 배포를 제공했다. 이후 승인된 재배포로 지도 키를 반영했다.
 - 배포 워크트리의 기본 npm 실행기는 Node.js 18을 사용해 optional native binding 설치가 누락됐다. Node.js 24로 npm CLI를 직접 실행해 `npm ci`를 다시 수행한 후 모든 검사가 통과했다. 잠금 파일은 변경하지 않았다.
 
-## 확인한 배포와 검증 한계
+## 최초 배포에서 확인한 범위와 한계(후속 결과는 다음 절)
 
 - [Preview 브랜치 URL](https://footprint-globe-git-codex-vercel-deploy-diavillager.vercel.app/)은 브랜치의 최신 배포를 가리킨다. 실제 지도 검증 대상은 `37464ea`의 [Ready 배포](https://vercel.com/diavillager/footprint-globe/FztZRE78g91oxAdC2VV5cFmvso64)다. 이후 문서만 변경한 커밋은 같은 앱·빌드 설정을 사용한다.
 - 브라우저 공개 지도 키는 현재 Production 전용이다. Preview에서 먼저 검증했으며 이후 Production에서도 실제 지도 로딩을 확인했다. MapTiler의 정확한 브랜치 도메인 허용으로 실제 지도 로딩이 성공했다. 유료 플랜·초과 과금은 활성화하지 않았다. [공식 Free 용도 안내](https://www.maptiler.com/cloud/pricing/)는 테스트·개인·비상업 용도를 포함한다. 계정 대시보드에서 정확한 잔여 요청 한도는 확인하지 못했다.
@@ -107,7 +108,25 @@ Node.js 24.x는 Vercel 프로젝트 설정에서 명시적으로 선택한다. �
 - 사용자가 제공을 허용한 지도 키 없는 첫 배포의 기본 도메인 `project-z82gt.vercel.app`에서 HTTPS 200, CSP의 `frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`을 실제 응답으로 확인했다. 이 도메인은 정식 운영 URL로 확정하지 않았다.
 - Preview에서 Vercel 도구막대의 추가 script 태그가 관측되어 프로젝트의 Pre-Production Toolbar를 Off로 저장했다. 기존 로드 화면에는 script 태그가 남아 있어 설정 변경을 삽입 제거·네트워크 무전송 검증 완료와 혼동하지 않는다. Analytics·Speed Insights는 활성화하지 않았다.
 - 운영 루트 200과 `/.env.local`, `/config`, `/private/`, `/missing-deploy-check.txt`의 404를 확인했다. 이 네 경로 확인을 모든 비공개 경로 검사로 확대하지 않는다. 두 worker·모든 자원 HTTP 상태, 요청 단위 JSON/메타데이터 업로드 부재, 지도 403/429/네트워크 실패는 원격 검증에서 미확인이다. 원격 전체 흐름과 실제 사용자 JSON 호환성을 완료했다고 주장하지 않는다.
-- 운영 재배포와 지도 로딩 확인 이후에도 승인된 PR 병합 실행, 정확한 사용량·잔여 한도 확인, 운영 URL의 합성 전체 흐름 검증은 남아 있다. 방문 지정과 사진은 이 완료 조건에 포함하지 않는다.
+- 이 절은 최초 배포 당시의 검증 범위다. PR #12 병합과 후속 합성 검증은 아래 결과로 갱신한다. 정확한 사용량·잔여 한도와 사용자 실제 파일 확인은 남아 있으며 방문 지정과 사진은 완료 조건에 포함하지 않는다.
+
+## 2026-10-06 배포 후 합성 검증
+
+`tests/deployment-smoke.cjs`를 별도 Edge headless 세션에서 실행했다. 사용자 Chrome의 파일 권한이나 운영 설정을 변경하지 않고 메모리에서 만든 24개 관측만 등록했다. 실제 Timeline·원본 기반 샘플은 읽지 않았다.
+
+- 실제 운영 주소에서 HTTPS 200, CSP의 frame-ancestors, DENY/nosniff 헤더, 지도 로딩, 파일 처리·지도 worker 두 종류의 시작을 확인했다.
+- 파일 등록·24개 관측 표시·목록 페이지 전환·관측 말풍선·UTC/KST·시간차/거리 분포·지우기를 확인했다. 390×844 화면 높이의 페이지 넘침이 없었으며 새로고침 후 기록이 복원되지 않고 localStorage/sessionStorage가 비어 있음을 확인했다. 이는 모바일 기기 자체의 호환성 검증은 아니다.
+- 실제 지도 요청을 허용한 검사 구간에서 예상 밖 origin 요청, GET/HEAD 외 요청·요청 본문, 합성 파일명/메타데이터/대표 시각·좌표 표식 노출, 페이지 오류, 실패 응답·요청은 각각 0건이었다. 요청 URL·키·본문·오류 원문은 출력하지 않는다. 이 결과는 검사한 세션의 브라우저 관측 범위이며 모든 시점의 무전송이나 공급자 서버의 보존 정책을 증명하지 않는다. 지도 열람 영역·확대 수준·IP가 MapTiler에 전달되는 기존 안내는 유지한다.
+- 별도 세션에서 MapTiler 응답만 403·429·네트워크 실패로 대체해 고정 오류 안내와 JSON 등록·목록 사용을 확인했다. 이후 합성 지도 응답으로 전환하고 재시도 시 오류가 해제됨을 확인했다. 실제 계정의 제한·쿼터나 운영 설정은 바꾸지 않았으며 공급자 장애 후 실제 서비스 복구를 시험한 것은 아니다.
+- 별도 브라우저에서는 로그인이 필요했으나 기존 Chrome의 로그인된 계정 화면에서 Free 플랜과 현재 청구 기간 643 requests·0 sessions를 확인했다(한국 시간 2026-10-06 확인 시점). 집계는 계정 전체 기준이며 지연이나 다른 요청을 포함할 수 있다. 사용자 안내에 따라 Account 그래프의 툴팁도 확인했다. Available은 Data storage 5.00 GB, Data processing 100 uploads, 3D data processing 10 M processed points, Maps 5 maps, Datasets 1 datasets이며 Keys는 Used 1 keys로 표시됐다. 이는 저장·처리·리소스 개수 한도이며 지도 열람 requests의 잔여 횟수는 이 화면에서 확인되지 않았다. 두 한도를 서로 대신 계산하지 않는다. 기존 0 requests 표시는 과거 기록이다.
+
+실행: Node.js 22.12 이상, Playwright와 Edge가 있는 환경에서 `node tests/deployment-smoke.cjs`. 운영 URL을 고정하며 임의 입력 파일을 받지 않는다. 실제 지도 요청을 소비하므로 기본 `npm run check`에 포함하지 않는다.
+
+### 사용자 실제 파일 확인 및 최종 검토
+
+2026-10-06 사용자는 실제 파일로 직접 확인했을 때 문제를 발견하지 못했다고 보고했다. 이를 실제 파일 기본 사용 확인으로 기록한다. 개별 원본 기록과 화면의 모든 점·선을 일대일 대조하거나 실제 이동 경로와 비교한 검증은 수행하지 않았다. 연결선은 유효 관측을 시간순으로 이은 흐름이며 실제 도로·이동 경로의 복원이 아니다. 에이전트는 실제 파일이나 실제 기록 화면을 열람하지 않았다.
+
+사용자는 PR #13의 최종 검토에 문제가 없으면 병합하도록 승인했다. 지도 열람 requests 잔여량 미확인은 운영상 남은 확인 사항으로 유지하며, 이 문서·합성 테스트 변경의 기능 결함이나 실제 경로 정확성 보장으로 해석하지 않는다. 방문·사진과 지원 형식 확대는 이번 완료 범위에 포함하지 않는다.
 
 ## 공식 근거
 
