@@ -1,10 +1,10 @@
 # Vercel 정적 웹 배포
 
-상태: 2026-10-06 사용자가 배포 진행, 기존 화면 브랜치 정리, 배포 브랜치 생성과 이 명세 작성을 승인했다. 대상은 사용자가 지정한 `diavillager` 계정의 새 프로젝트이며 원격 배포는 아직 수행하지 않았다. 후속 PR 병합 승인은 별도다.
+상태: 2026-10-06 사용자가 배포 진행, 기존 화면 브랜치 정리, 배포 브랜치 생성과 이 명세 작성을 승인했다. `diavillager/footprint-globe` 프로젝트 생성과 Git 연결을 완료했다. 첫 배포의 환경 분류가 요청과 달라 Production은 일시 중지했으며 Preview 검증을 진행 중이다. 후속 PR 병합 승인은 별도다.
 
 ## 다른 워크트리로 인계
 
-사용자는 실제 배포를 다른 워크트리·대화에서 진행하며 브랜치 이동은 직접 수행한다. 현재 대화에서는 명세·설정 검토와 커밋까지만 진행한다. 다음 작업자는 브랜치와 미커밋 변경, 다른 워크트리 사용 여부를 먼저 확인하고 이 브랜치를 이어 사용한다. 새 프로젝트 생성·원격 배포는 아직 수행하지 않았다. 로컬 `.env.local`은 Git에 포함되지 않으므로 새 워크트리에 자동 복사되지 않는다. 키 값을 채팅에 요청하지 말고 안전한 로컬 설정 또는 Vercel 환경변수 입력으로 준비한다.
+준비 대화는 명세·설정 검토와 `bfd4cdb` 커밋까지 진행했다. 사용자가 기존 워크트리의 브랜치를 해제한 뒤 배포 대화에서 `codex/vercel-deploy`를 이어 사용한다. 로컬 `.env.local`은 Git에 포함되지 않으므로 새 워크트리에 자동 복사되지 않는다. 키 값을 채팅에 요청하지 말고 안전한 로컬 설정 또는 Vercel 환경변수 입력으로 준비한다.
 
 ## 목적과 기준
 
@@ -67,14 +67,24 @@ Node.js 24.x는 Vercel 프로젝트 설정에서 명시적으로 선택한다. �
 ## 완료 기준과 남은 결정
 
 - [x] 대상 계정 확인: https://vercel.com/diavillager, 새 프로젝트 생성 승인
-- [ ] 실제 프로젝트 생성·연결
+- [x] 실제 프로젝트 생성·연결: [Vercel 프로젝트](https://vercel.com/diavillager/footprint-globe), GitHub `diavillager/footprint-globe`, Vite, Node.js 24.x, Production 추적 `main`
 - [ ] MapTiler 운영 origin·사용량/요금제 확인
 - [x] 로컬 `npm run check`: 타입 검사·116개 테스트·빌드 통과(설정 초안 작성 후 수행, 큰 지도 번들 경고 유지)
-- [ ] 배포 변경의 브라우저 smoke 및 Preview 검증
+- [x] 배포 워크트리에서 Node.js 24.19.0으로 `npm run check` 및 Edge `node tests/app-smoke.cjs` 통과(합성 응답, 개발·빌드 화면)
+- [ ] Preview 원격 검증
 - [ ] PR 검토·승인된 병합 및 Production 배포
 - [ ] 운영 URL에서 합성 전체 흐름·개인정보 처리 검증
 
 사용자 실제 기록은 에이전트가 읽지 않는다. 실제 입력 호환성은 사용자가 배포 화면에서 직접 확인하며 합성 검증과 구별한다. 유료 예산·커스텀 도메인·추가 브라우저 지원은 임의로 확정하지 않는다.
+
+## 원격 진행 기록
+
+- 프로젝트를 빈 상태로 생성한 뒤 `footprint-globe`로 이름을 변경하고 기존 GitHub 연결을 사용했다. 서버 함수·분석 SDK·저장소 기능은 추가하지 않았다.
+- `bfd4cdb`를 `Create Preview Deployment`로 요청했으나 [첫 배포](https://vercel.com/diavillager/footprint-globe/2emh3ebiFF3WcLNXSTdYiMAdbR7X)의 결과 환경은 Production이었다. 원인을 확정하지 않았으며 발견 즉시 프로젝트의 Production 제공을 일시 중지했다. PR 병합은 수행하지 않았다. 배포에는 지도 키가 없다.
+- Production은 승인 후에만 재개한다. Vercel의 일시 중지 안내에 따르면 Preview 배포·설정·데이터는 영향을 받지 않는다.
+- MapTiler 계정은 Free 플랜이다. 대시보드의 현재 청구 기간에는 0 requests/0 sessions와 데이터 없음이 표시됐으므로 이를 정확한 잔여 한도로 단정하지 않는다. 사용자가 기존 `footprint-globe-dev` 키의 Preview 재사용을 승인했다. localhost 허용을 유지하며 `footprint-globe-git-codex-vercel-deploy-diavillager.vercel.app`만 추가했다. 전체 Vercel 와일드카드·출처 불명 허용은 사용하지 않았다.
+- Vercel Preview의 `VITE_MAPTILER_API_KEY`는 공개 브라우저 키에 맞는 Config 형식으로 설정한다. Production 키와 운영 origin은 아직 설정하지 않았다. MapTiler는 origin 변경 반영에 최대 5분이 걸릴 수 있다고 안내한다.
+- 배포 워크트리의 기본 npm 실행기는 Node.js 18을 사용해 optional native binding 설치가 누락됐다. Node.js 24로 npm CLI를 직접 실행해 `npm ci`를 다시 수행한 후 모든 검사가 통과했다. 잠금 파일은 변경하지 않았다.
 
 ## 공식 근거
 
