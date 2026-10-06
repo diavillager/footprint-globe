@@ -17,6 +17,8 @@ let stage = 'startup';
       records: [{ latitude: 12.34, longitude: 45.67, start_time: 2208988800000, PRIVATE_KEY: 'PRIVATE_VALUE' }],
     }));
     await fs.writeFile(path.join(folder, 'PRIVATE.csv'), 'latitude,longitude,timestamp\n0,0,2208988800000\n');
+    await fs.writeFile(path.join(folder, 'PRIVATE_SUMMARY.csv'), 'create_time,step_count,extra_data\n2208988800000,123,PRIVATE_REFERENCE\n');
+    await fs.writeFile(path.join(folder, 'PRIVATE_BROKEN.csv'), 'latitude,longitude\n0,0\n0');
     browser = await chromium.launch({ channel: 'msedge', headless: true });
     const context = await browser.newContext();
     let network = 0, errors = 0, leaks = 0;
@@ -30,6 +32,9 @@ let stage = 'startup';
     await page.getByText('[CANDIDATES_FOUND]', { exact: false }).waitFor();
     const result = await page.locator('#result').textContent();
     assert.match(result, /좌표\+시각 후보: 2/);
+    assert.match(result, /구조 진단 v2/);
+    assert.match(result, /\[CSV_WIDTH\] 행 열수 불일치 1/);
+    assert.match(result, /좌표 열 없는 요약·관리 필드 1/);
     assert.doesNotMatch(await page.locator('body').innerText(), /PRIVATE|12\.34|2208988800000/);
     assert.equal(await page.evaluate(() => document.getElementById('folder').value), '');
     assert.equal(await page.evaluate(() => localStorage.length + sessionStorage.length), 0);

@@ -32,9 +32,55 @@ test('quoted CSV, version preamble, BOM, CRLF and multiline fields', async () =>
 test('malformed or unknown CSV rolls back candidate counts and reports exclusion', async () => {
   const r = await api.inspect([
     file('latitude,longitude,time\n1,2,0\n"unterminated', 'a.csv'),
-    file('calorie,steps\n1,2', 'b.csv'), file('latitude,longitude,latitude\n1,2,3', 'c.csv'),
+    file('PRIVATE_HEADER,steps\n1,2', 'b.csv'), file('latitude,longitude,latitude\n1,2,3', 'c.csv'),
   ]);
   assert.equal(r.parseErrors, 3); assert.equal(r.excludedFiles, 3); assert.equal(r.timedCandidates, 0);
+  assert.equal(r.csvSyntaxErrors, 1); assert.equal(r.csvUnknownHeaders, 1); assert.equal(r.csvDuplicateHeaders, 1);
+  assert.equal(r.coordinateCandidates, 0); assert.equal(r.csvHeaders, 2);
+});
+
+test('summary and reference headers are recognized without inventing observation times', async () => {
+  const r = await api.inspect([file('version,1\ncom.samsung.health.create_time,com.samsung.shealth.activity.day_summary.step_count,extra_data\n2208988800000,123,PRIVATE_REFERENCE\n', 'PRIVATE.csv')]);
+  assert.equal(r.csvFiles, 1); assert.equal(r.csvRows, 1); assert.equal(r.csvSummaryHeaders, 1);
+  assert.equal(r.csvReferenceHeaders, 1); assert.equal(r.csvTimeHeaders, 0); assert.equal(r.timeCandidates, 0);
+  assert.equal(r.csvCoordinateHeaders, 0); assert.equal(r.timedCandidates, 0);
+  assert.doesNotMatch(api.format(r), /PRIVATE|2208988800000|step_count/);
+});
+
+test('namespaced coordinate headers normalize conservatively, including collisions', async () => {
+  const r = await api.inspect([file('com.samsung.health.exercise.latitude,com.samsung.health.exercise.longitude,com.samsung.health.start_time\n0,0,2208988800000', 'a.csv')]);
+  assert.equal(r.timedCandidates, 1); assert.equal(r.csvCoordinateHeaders, 1); assert.equal(r.csvTimeHeaders, 1);
+  const duplicate = await api.inspect([file('latitude,com.samsung.health.latitude\n0,0', 'a.csv')]);
+  assert.equal(duplicate.csvDuplicateHeaders, 1);
+});
+
+test('CSV width, encoding and syntax failures remain distinct and discard partial values', async () => {
+  const r = await api.inspect([
+    file('latitude,longitude,start_time\n0,0,2208988800000\n0,0', 'a.csv'),
+    file('\u0000latitude,longitude', 'b.csv'), file('\ufffdPRIVATE', 'c.csv'),
+    file('PRIVATE,UNKNOWN\n1,2\n3,4\n"unterminated', 'd.csv'),
+  ]);
+  assert.equal(r.csvWidthErrors, 1); assert.equal(r.csvEncodingErrors, 2); assert.equal(r.csvSyntaxErrors, 1);
+  assert.equal(r.csvHeaders, 1); assert.equal(r.csvRows, 0); assert.equal(r.timedCandidates, 0);
+  assert.doesNotMatch(JSON.stringify(r) + api.format(r), /PRIVATE|2208988800000/);
+});
+
+test('header search is limited to three logical rows and header presence is not data', async () => {
+  const r = await api.inspect([
+    file('latitude,longitude,start_time', 'a.csv'),
+    file('PRIVATE\nPRIVATE\nPRIVATE\nlatitude,longitude,start_time\n0,0,2208988800000', 'b.csv'),
+  ]);
+  assert.equal(r.csvFiles, 1); assert.equal(r.csvUnknownHeaders, 1); assert.equal(r.csvHeaders, 1);
+  assert.equal(r.csvRows, 0); assert.equal(r.timedCandidates, 0);
+});
+
+test('CSV row and column limits are reported separately from syntax', async () => {
+  const r = await api.inspect([
+    file('create_time\n' + '0\n'.repeat(api.limits.csvRows), 'a.csv'),
+    file(Array(api.limits.csvColumns + 1).fill('PRIVATE').join(','), 'b.csv'),
+  ]);
+  assert.equal(r.csvLimitErrors, 2); assert.equal(r.csvSyntaxErrors, 0);
+  assert.equal(r.partial, true); assert.equal(r.csvRows, 0);
 });
 test('read errors and arbitrary identifiers never appear in output or progress', async () => {
   const progress = [];
