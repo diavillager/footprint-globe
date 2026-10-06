@@ -37,9 +37,8 @@ export default function MapTilerGlobe(props: Props) {
     let instance: sdk.Map | null = null;
     const resize = new ResizeObserver(() => instance?.resize());
     try {
-      const first = latest.current.points[0]?.coordinate;
       instance = new sdk.Map({ container: container.current, style: `https://api.maptiler.com/maps/base-v4/style.json?key=${encodeURIComponent(mapTilerKey)}`,
-        center: first ? [first.longitude, first.latitude] : [0, 0], zoom: 2, maxZoom: 20,
+        center: [127.5, 38.5], zoom: 5, maxZoom: 20,
         transformRequest: url => {
           const resource = new URL(url, window.location.href);
           if (resource.origin !== 'https://api.maptiler.com' || !/^\/(maps|tiles|fonts|resources|sprites)\//.test(resource.pathname)) return { url: 'data:application/json,{}' };
@@ -53,6 +52,8 @@ export default function MapTilerGlobe(props: Props) {
       instance.on('load', () => {
         if (!active || !instance) return;
         instance.setProjection({ type: 'globe' });
+        instance.fitBounds([[124, 33], [131, 43]], { padding: { top: 130, bottom: 45, left: 45, right: 65 }, duration: 0 });
+        instance.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
         instance.addControl(new sdk.NavigationControl());
         // Keep provider filters and disputed boundaries; only strengthen visibility.
         for (const layer of instance.getStyle().layers) {
@@ -82,12 +83,14 @@ export default function MapTilerGlobe(props: Props) {
     if (!ready || !map.current) return;
     (map.current.getSource('observations') as sdk.GeoJSONSource).setData(points);
     (map.current.getSource('connections') as sdk.GeoJSONSource).setData(lines);
+    const first = props.points[0]?.coordinate;
+    if (first) map.current.jumpTo({ center: [first.longitude, first.latitude] });
   }, [ready, points, lines]);
   useEffect(() => {
     if (!ready || !map.current) return;
     const point = props.selectedObservation;
     map.current.setFilter('selected', ['==', ['get', 'observationId'], point?.id ?? '']);
-    if (point && focusedRevision.current !== props.focusRevision) map.current.jumpTo({ center: [point.coordinate.longitude, point.coordinate.latitude], zoom: 19 });
+    if (point && focusedRevision.current !== props.focusRevision) map.current.jumpTo({ center: [point.coordinate.longitude, point.coordinate.latitude] });
     focusedRevision.current = props.focusRevision;
   }, [ready, props.selectedObservation, props.focusRevision]);
   useEffect(() => {
@@ -101,7 +104,7 @@ export default function MapTilerGlobe(props: Props) {
   const selected = props.selectedObservation;
   const candidates = props.candidates ?? [];
   const candidateIndex = selected ? candidates.findIndex(point => point.id === selected.id) : -1;
-  return <div>
+  return <div className="map-surface">
     {selected && createPortal(<div role="dialog" aria-label="관측포인트 상세 정보">
       <button className="popup-close" aria-label="상세 정보 닫기" onClick={props.onClose}>×</button>
       <h3>관측 {props.points.indexOf(selected) + 1}</h3>
@@ -109,11 +112,11 @@ export default function MapTilerGlobe(props: Props) {
       <p>위도 {selected.coordinate.latitude}<br />경도 {selected.coordinate.longitude}</p>
       {candidates.length > 1 && <div className="popup-candidates"><p>겹친 관측 {candidateIndex + 1} / {candidates.length}</p><button disabled={candidateIndex <= 0} onClick={() => props.onSelect(candidates[candidateIndex - 1]!)}>이전 관측</button><button disabled={candidateIndex >= candidates.length - 1} onClick={() => props.onSelect(candidates[candidateIndex + 1]!)}>다음 관측</button></div>}
     </div>, popupHost)}
-    {!mapTilerKey ? <p role="alert">지도 키가 없습니다. 배포 환경의 VITE_MAPTILER_API_KEY를 설정해 주세요. JSON 등록과 목록 확인은 계속 사용할 수 있습니다.</p> : <>
-      <p role="status">{failed ? '[MAP_UNAVAILABLE] 일부 지도 자료를 불러오지 못했습니다. 기록 목록은 계속 사용할 수 있습니다.' : ready ? '상세 지도 준비 완료 · 지도의 점을 누르면 관측을 선택합니다.' : '상세 지도를 불러오는 중입니다…'}</p>
-      {failed && <button onClick={() => setRevision(value => value + 1)}>지도 다시 시도</button>}
-      <div style={{ position: 'relative' }}>
-        <div ref={container} aria-label="MapTiler 상세 지구본" style={{ height: 560, position: 'relative', textAlign: 'left' }} />
+    {!mapTilerKey ? <p role="alert" className="map-message">지도 키가 없습니다. VITE_MAPTILER_API_KEY를 설정해 주세요. JSON 등록과 목록 확인은 계속 사용할 수 있습니다.</p> : <>
+      <div className={ready && !failed ? 'sr-only' : 'map-message'}><p role="status">{failed ? '[MAP_UNAVAILABLE] 일부 지도 자료를 불러오지 못했습니다. 기록 목록은 계속 사용할 수 있습니다.' : ready ? '상세 지도 준비 완료' : '상세 지도를 불러오는 중입니다…'}</p>
+      {failed && <button onClick={() => setRevision(value => value + 1)}>지도 다시 시도</button>}</div>
+      <div className="map-fill">
+        <div ref={container} aria-label="MapTiler 상세 지구본" className="map-canvas" />
         <a href="https://www.maptiler.com/" target="_blank" rel="noreferrer" style={{ position: 'absolute', bottom: 10, left: 10 }}><img src="https://api.maptiler.com/resources/logo.svg" alt="MapTiler logo" width="100" /></a>
       </div>
     </>}
