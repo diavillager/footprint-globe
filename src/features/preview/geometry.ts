@@ -2,6 +2,9 @@ import { BufferGeometry, Float32BufferAttribute, Group, LineBasicMaterial, LineD
 import type { Coordinate, Observation } from '../../domain/timeline';
 import type { Connection } from './analysis';
 
+// Points and line endpoints must share a radius to avoid parallax while orbiting.
+const TRACE_RADIUS = 100.4;
+
 export function globeVector(c: Coordinate): Vector3 {
   const lat = c.latitude * Math.PI / 180, lng = c.longitude * Math.PI / 180;
   return new Vector3(Math.cos(lat) * Math.sin(lng), Math.sin(lat), Math.cos(lat) * Math.cos(lng));
@@ -14,7 +17,7 @@ export function arcVertices(a: Coordinate, b: Coordinate): Vector3[] {
   const axis = new Vector3().crossVectors(start, end);
   if (axis.lengthSq() < 1e-16) axis.crossVectors(start, Math.abs(start.y) < .9 ? new Vector3(0, 1, 0) : new Vector3(1, 0, 0));
   axis.normalize();
-  return Array.from({ length: steps + 1 }, (_, i) => i === steps ? end.clone().multiplyScalar(100.4) : start.clone().applyAxisAngle(axis, angle * i / steps).multiplyScalar(100.4));
+  return Array.from({ length: steps + 1 }, (_, i) => i === steps ? end.clone().multiplyScalar(TRACE_RADIUS) : start.clone().applyAxisAngle(axis, angle * i / steps).multiplyScalar(TRACE_RADIUS));
 }
 export function buildPreviewObjects(points: readonly Observation[], connections: readonly Connection[], differentiated: boolean, thresholdSeconds: number) {
   const positions: number[][] = [[], []];
@@ -37,7 +40,7 @@ export function buildPreviewObjects(points: readonly Observation[], connections:
     group.add(lines); geometries.push(geometry); materials.push(material);
   });
   const dots = new BufferGeometry();
-  dots.setAttribute('position', new Float32BufferAttribute(points.flatMap(p => globeVector(p.coordinate).multiplyScalar(100.6).toArray()), 3));
+  dots.setAttribute('position', new Float32BufferAttribute(points.flatMap(p => globeVector(p.coordinate).multiplyScalar(TRACE_RADIUS).toArray()), 3));
   // Screen-sized circles keep dense observations readable when zooming in.
   const dotMaterial = new PointsMaterial({ color: '#ecfff9', size: 3, sizeAttenuation: false });
   dotMaterial.onBeforeCompile = shader => {

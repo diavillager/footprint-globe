@@ -44,6 +44,13 @@ let stage = 'startup';
         await page.waitForTimeout(350);
       }
       if (server === production) await page.locator('canvas').screenshot({ path: path.join(os.tmpdir(), 'footprint-preview-zoom-synthetic.png') });
+      const canvasBox = await page.locator('canvas').boundingBox();
+      await page.mouse.move(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(canvasBox.x + canvasBox.width / 2 + 60, canvasBox.y + canvasBox.height / 2 + 30, { steps: 12 });
+      await page.mouse.up();
+      await page.waitForTimeout(500);
+      if (server === production) await page.locator('canvas').screenshot({ path: path.join(os.tmpdir(), 'footprint-preview-orbit-synthetic.png') });
       stage += '-worker';
       const large = { rawSignals: Array.from({ length: 10123 }, (_, i) => ({ position: {
         LatLng: `35.00°, ${125 + (i % 10) / 100}°`, timestamp: new Date(Date.UTC(2040, 0, 1) + i * 60000).toISOString(), SECRET: 'CANARY',
