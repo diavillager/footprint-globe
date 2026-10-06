@@ -29,6 +29,7 @@ let stage = 'startup';
       stage = server === dev ? 'development' : 'production';
       await page.goto(origin);
       await page.getByRole('heading', { name: '내 기록으로 연결 방식을 비교하세요' }).waitFor();
+      await page.getByLabel('지도 표시', { exact: true }).selectOption('offline');
       await page.getByRole('button', { name: '합성 예제로 체험' }).click();
       await page.locator('canvas').waitFor();
       assert.match(await page.getByRole('status').textContent(), /연결 3개/);
