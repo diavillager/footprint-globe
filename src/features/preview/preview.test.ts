@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { parseRawPreview } from '../../parser/rawPreview';
 import { syntheticRawPreview } from '../../fixtures/preview';
 import { connectAll, distribution, separationKm } from './analysis';
-import { arcVertices, buildPreviewObjects } from './geometry';
+import { arcVertices, buildPreviewObjects, dashUnit } from './geometry';
 import { LineSegments, PerspectiveCamera, Points, Vector3 } from 'three';
 
 it('anchors line endpoints to point centers through rotation and close zoom', () => {
@@ -32,6 +32,21 @@ it('anchors line endpoints to point centers through rotation and close zoom', ()
 
 const parse = (data: unknown) => parseRawPreview(JSON.stringify(data), 'dataset:test');
 const pos = (stamp: string, coordinate = '0°, 0°') => ({ position: { LatLng: coordinate, timestamp: stamp } });
+it('shrinks dash spacing with zoom and preserves 30/120-minute classification boundaries', () => {
+  expect(dashUnit(101.5, 50, 560)).toBeLessThan(dashUnit(270, 50, 560) / 100);
+  expect(dashUnit(108, 50, 1120)).toBeCloseTo(dashUnit(108, 50, 560) / 2);
+  const result = parse({ rawSignals: [0, 30, 90, 210, 390].map(minutes => pos(new Date(Date.UTC(2040, 0, 1) + minutes * 60000).toISOString(), `0°, ${minutes / 100}°`)) });
+  if (!result.ok) throw new Error('fixture');
+  const links = connectAll(result.data.observations);
+  for (const [threshold, expected] of [[30, 3], [120, 1]]) {
+    const selected = links.filter(link => link.seconds > threshold! * 60);
+    expect(selected).toHaveLength(expected!);
+    const drawing = buildPreviewObjects(result.data.observations, links, true, threshold! * 60);
+    const dashed = drawing.group.children[1] as LineSegments;
+    expect(dashed.geometry.getAttribute('position').count).toBe(selected.reduce((sum, link) => sum + (arcVertices(link.from.coordinate, link.to.coordinate).length - 1) * 2, 0));
+    drawing.dispose();
+  }
+});
 it('retains every valid point and every adjacent link including long gaps and returns', () => {
   const result = parse(syntheticRawPreview());
   expect(result.ok).toBe(true);

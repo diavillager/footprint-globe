@@ -32,8 +32,12 @@ let stage = 'startup';
       await page.getByRole('button', { name: '합성 예제로 체험' }).click();
       await page.locator('canvas').waitFor();
       assert.match(await page.getByRole('status').textContent(), /연결 3개/);
+      assert.equal(await page.getByRole('spinbutton', { name: '점선 시간차 기준' }).isDisabled(), true);
       await page.getByRole('radio', { name: '긴 공백은 점선' }).check();
-      await page.getByRole('spinbutton', { name: '점선 시간차 기준' }).fill('10');
+      for (const threshold of ['30', '120']) {
+        await page.getByRole('spinbutton', { name: '점선 시간차 기준' }).fill(threshold);
+        await page.getByText('현재 표시: 실선 1개 · 점선 2개.', { exact: false }).waitFor();
+      }
       assert.match(await page.getByRole('status').textContent(), /연결 3개/);
       assert.equal(await page.getByRole('alert').count(), 0);
       // Capture authored demo only, never a selected personal file.

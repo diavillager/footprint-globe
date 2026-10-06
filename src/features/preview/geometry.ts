@@ -1,9 +1,14 @@
-import { BufferGeometry, Float32BufferAttribute, Group, LineBasicMaterial, LineDashedMaterial, LineSegments, Points, PointsMaterial, Vector3 } from 'three';
+import { BufferGeometry, Float32BufferAttribute, Group, LineBasicMaterial, LineDashedMaterial, LineSegments, PerspectiveCamera, Points, PointsMaterial, Vector2, Vector3 } from 'three';
 import type { Coordinate, Observation } from '../../domain/timeline';
 import type { Connection } from './analysis';
 
 // Points and line endpoints must share a radius to avoid parallax while orbiting.
 const TRACE_RADIUS = 100.4;
+
+/** Approximate world units per screen pixel on the facing trace surface. */
+export function dashUnit(cameraDistance: number, verticalFov: number, height: number): number {
+  return 2 * Math.max(.01, cameraDistance - TRACE_RADIUS) * Math.tan(verticalFov * Math.PI / 360) / Math.max(1, height);
+}
 
 export function globeVector(c: Coordinate): Vector3 {
   const lat = c.latitude * Math.PI / 180, lng = c.longitude * Math.PI / 180;
@@ -37,6 +42,16 @@ export function buildPreviewObjects(points: readonly Observation[], connections:
     const material = i === 0 ? new LineBasicMaterial({ color: '#69e6d0' }) : new LineDashedMaterial({ color: '#ffc07b', dashSize: .8, gapSize: .45 });
     const lines = new LineSegments(geometry, material);
     lines.computeLineDistances();
+    if (material instanceof LineDashedMaterial) {
+      const viewport = new Vector2(), cameraPosition = new Vector3(), center = new Vector3();
+      lines.onBeforeRender = (renderer, _scene, camera) => {
+        if (!(camera instanceof PerspectiveCamera)) return;
+        renderer.getSize(viewport);
+        const unit = dashUnit(camera.getWorldPosition(cameraPosition).distanceTo(lines.getWorldPosition(center)), camera.getEffectiveFOV(), viewport.y);
+        material.dashSize = unit * 6;
+        material.gapSize = unit * 4;
+      };
+    }
     group.add(lines); geometries.push(geometry); materials.push(material);
   });
   const dots = new BufferGeometry();

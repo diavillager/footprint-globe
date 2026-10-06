@@ -74,8 +74,10 @@ export function LocalPreview() {
         <label><input type="radio" name="mode" checked={mode === 'solid'} onChange={() => setMode('solid')} />모두 실선</label>
         <label><input type="radio" name="mode" checked={mode === 'gaps'} onChange={() => setMode('gaps')} />긴 공백은 점선</label>
       </fieldset>
-      <label className="threshold">점선으로 구분할 시간차 (분)<input type="number" aria-label="점선 시간차 기준" min="0" max="5256000" step="1" value={threshold} onChange={e => { const n = e.currentTarget.valueAsNumber; if (Number.isFinite(n)) setThreshold(Math.max(0, Math.min(5256000, n))); }} /></label>
+      <label className="threshold">점선으로 구분할 시간차 (분)<input type="number" aria-label="점선 시간차 기준" disabled={mode !== 'gaps'} min="0" max="5256000" step="1" value={threshold} onChange={e => { const n = e.currentTarget.valueAsNumber; if (Number.isFinite(n)) setThreshold(Math.max(0, Math.min(5256000, n))); }} /></label>
       <p>시험 기준 {threshold.toLocaleString()}분 초과: {longCount.toLocaleString()}개 연결. 기준은 직접 바꿀 수 있으며 정확도 판단이나 확정 정책이 아닙니다.</p>
+      <p aria-live="polite">현재 표시: 실선 {(connections.length - (mode === 'gaps' ? longCount : 0)).toLocaleString()}개 · 점선 {(mode === 'gaps' ? longCount : 0).toLocaleString()}개.
+        {mode === 'solid' ? ' 점선을 비교하려면 ‘긴 공백은 점선’을 선택하세요.' : longCount === 0 ? ' 현재 시간차 기준을 초과하는 연결이 없습니다.' : ' 주황색 점선으로 구분합니다. 화면에서 매우 짧거나 같은 위치의 연결은 점선 모양이 보이지 않을 수 있습니다.'}</p>
       <p className="legend">● 관측 위치　<span className="solid">━ 기록 지점 연결</span>　<span className="dashed">┄ 긴 시간차의 연결</span></p>
       <GlobeBoundary key={data.datasetId}><PreviewGlobe points={data.observations} connections={connections} differentiated={mode === 'gaps'} thresholdSeconds={threshold * 60} /></GlobeBoundary>
       <p className="note">같은 위치의 점·선은 겹쳐 보일 수 있습니다. 지구 뒤편은 회전해서 확인하세요. 배경은 개략 육지 윤곽이며 도로 지도는 아닙니다.</p>
