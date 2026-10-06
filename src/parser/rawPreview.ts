@@ -1,9 +1,6 @@
-import type { DatasetId, Observation, TimelineData } from '../domain/timeline';
+import type { DatasetId, Observation, ImportCounts, ParseResult } from '../domain/timeline';
 
 export const PREVIEW_LIMITS = { bytes: 64 * 1024 * 1024, records: 100000 } as const;
-export type PreviewError = 'INVALID_JSON' | 'UNSUPPORTED_FORMAT' | 'INPUT_LIMIT' | 'NO_VALID_POSITIONS' | 'FILE_READ_FAILED';
-export interface PreviewCounts { input: number; accepted: number; ignoredSignals: number; invalidPositions: number; ignoredRootFields: number }
-export type PreviewResult = { ok: true; data: TimelineData; counts: PreviewCounts } | { ok: false; code: PreviewError; counts?: PreviewCounts };
 const object = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
 const own = (v: object, k: string) => Object.hasOwn(v, k);
 
@@ -32,13 +29,13 @@ function coordinate(value: unknown) {
 }
 
 /** Preview extractor, not the sample sanitizer. Copies only validated coordinates and timestamps. */
-export function parseRawPreview(text: string, datasetId: DatasetId): PreviewResult {
+export function parseRawPreview(text: string, datasetId: DatasetId): ParseResult {
   if (new TextEncoder().encode(text).length > PREVIEW_LIMITS.bytes) return { ok: false, code: 'INPUT_LIMIT' };
   let root: unknown;
   try { root = JSON.parse(text.replace(/^\uFEFF/, '')); } catch { return { ok: false, code: 'INVALID_JSON' }; }
   if (!object(root) || !Array.isArray(root.rawSignals) || own(root, 'semanticSegments') || own(root, 'timelineObjects')) return { ok: false, code: 'UNSUPPORTED_FORMAT' };
   if (root.rawSignals.length > PREVIEW_LIMITS.records) return { ok: false, code: 'INPUT_LIMIT' };
-  const counts: PreviewCounts = { input: root.rawSignals.length, accepted: 0, ignoredSignals: 0, invalidPositions: 0, ignoredRootFields: Object.keys(root).length - 1 };
+  const counts: ImportCounts = { input: root.rawSignals.length, accepted: 0, ignoredSignals: 0, invalidPositions: 0, ignoredRootFields: Object.keys(root).length - 1 };
   const entries: { point: Observation; ns: bigint }[] = [];
   for (const record of root.rawSignals) {
     if (!object(record) || !own(record, 'position')) { counts.ignoredSignals++; continue; }
