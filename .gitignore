@@ -1,0 +1,15 @@
+# Personal exports and generated samples must never be committed by default.
+*.json
+*.jsonl
+*.zip
+*.kml
+*.gpx
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.webp
+private/
+local-data/
+node_modules/
+dist/
