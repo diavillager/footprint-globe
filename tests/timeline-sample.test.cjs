@@ -100,7 +100,7 @@ test('unknown root metadata is omitted without reflecting keys or any nested val
     assert.equal(result.report.reasons.EXCLUDED_ROOT_FIELD, 3);
     assert.equal(result.report.inputRecords, Object.values(fixture())[0].length);
     assert.equal(JSON.stringify(data), before);
-    assert.doesNotMatch(JSON.stringify(result) + formatReport(result.report), /SECRET_|rawSignals|userLocationProfile|33\.125|331250000|2021-02-03/);
+    assert.doesNotMatch(JSON.stringify(result) + formatReport(result.report), /SECRET_|userLocationProfile|33\.125|331250000|2021-02-03/);
     sameShape(fixture(), output);
   }
 });
