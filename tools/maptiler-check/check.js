@@ -10,10 +10,31 @@ const points = [
 let map, loading = false, originalPaint = new Map();
 let boundaryLayers = [], ready = false, failed = false;
 const status = value => { byId('status').textContent = value; };
-function select(ids) { byId('selection').textContent = '선택: ' + ids.join(', '); }
+function clearSelection() {
+  byId('selection').textContent = '선택 없음';
+  byId('map-selection').hidden = true;
+  for (const button of byId('observations').children) button.setAttribute('aria-pressed', 'false');
+}
+function select(ids, focus = false) {
+  if (!map || !ready) return;
+  const selected = points.filter(point => ids.includes(point.id));
+  if (!selected.length) return;
+  const label = '선택: ' + selected.map(point => point.id).join(', ');
+  byId('selection').textContent = label;
+  byId('map-selection').textContent = label + (ids.length > 1 ? ' · 아래 버튼으로 하나를 선택하세요' : ' · 주황 테두리');
+  byId('map-selection').hidden = false;
+  for (const button of byId('observations').children) button.setAttribute('aria-pressed', String(ids.includes(button.textContent)));
+  map.getSource('synthetic-selection').setData({ type: 'FeatureCollection', features: selected.map(point => ({ type: 'Feature', properties: { id: point.id }, geometry: { type: 'Point', coordinates: point.coordinates } })) });
+  if (focus) {
+    byId('region').value = 'seoul'; byId('zoom').value = '19';
+    status('선택한 시험점으로 이동 중');
+    map.jumpTo({ center: selected[0].coordinates, zoom: 19 });
+  }
+}
 for (const point of points) {
   const button = document.createElement('button'); button.textContent = point.id;
-  button.addEventListener('click', () => select([point.id]));
+  button.disabled = true; button.setAttribute('aria-pressed', 'false');
+  button.addEventListener('click', () => select([point.id], true));
   byId('observations').append(button);
 }
 function loadSdk() {
@@ -40,7 +61,7 @@ byId('start').addEventListener('click', async () => {
   if (loading || map) return;
   loading = true; failed = false; byId('start').disabled = true; status('지도 준비 중');
   byId('region').value = 'seoul'; byId('zoom').value = '9'; byId('projection').value = 'globe';
-  byId('boundaries').checked = false; byId('selection').textContent = '선택 없음';
+  byId('boundaries').checked = false; clearSelection();
   try {
     const response = await fetch('/config', { cache: 'no-store' });
     if (!response.ok) throw new Error('KEY_MISSING');
@@ -64,8 +85,11 @@ byId('start').addEventListener('click', async () => {
       map.addSource('synthetic-connection', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: points.map(p => p.coordinates) } } });
       map.addLayer({ id: 'synthetic-line', type: 'line', source: 'synthetic-connection', paint: { 'line-color': '#b84700', 'line-width': 3, 'line-dasharray': [2, 2] } });
       map.addLayer({ id: 'synthetic-points', type: 'circle', source: 'synthetic-observations', paint: { 'circle-radius': 6, 'circle-color': '#006dad', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
+      map.addSource('synthetic-selection', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({ id: 'selected-point-ring', type: 'circle', source: 'synthetic-selection', paint: { 'circle-radius': 11, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': '#bd4000', 'circle-stroke-width': 3 } });
       map.on('click', 'synthetic-points', e => select([...new Set(e.features.map(f => f.properties.id))]));
       ready = true; byId('controls').disabled = false;
+      for (const button of byId('observations').children) button.disabled = false;
       report();
     });
     map.on('idle', () => { report(); if (!failed) status('지도 준비 완료'); });
@@ -79,6 +103,8 @@ byId('stop').addEventListener('click', () => {
   if (map) map.remove(); map = undefined; ready = false;
   if (window.maptilersdk) window.maptilersdk.config.apiKey = '';
   byId('controls').disabled = true; byId('stop').disabled = true; byId('start').disabled = false;
+  clearSelection();
+  for (const button of byId('observations').children) button.disabled = true;
   byId('report').textContent = '지도 종료'; status('지도 종료 · 새 지도 요청 중지');
 });
 byId('region').addEventListener('change', move);

@@ -44,6 +44,7 @@ let stage = 'startup';
     await page.goto(origin);
     assert.equal(counts.external, 0);
     assert.equal(await page.locator('input[type=file]').count(), 0);
+    assert.equal(await page.getByRole('button', { name: 'SYN-B', exact: true }).isDisabled(), true);
     stage = 'map-start';
     await page.getByRole('button', { name: '지도 검증 시작' }).click();
     await page.waitForFunction(() => document.getElementById('status').textContent === '지도 준비 완료', undefined, { timeout: 60000 });
@@ -65,6 +66,14 @@ let stage = 'startup';
       if (region === 'seoul' || region === 'tokyo') await page.screenshot({ path: path.join(os.tmpdir(), `maptiler-check-${region}.png`), fullPage: true });
     }
     stage = 'close-points';
+    // From the Pacific view, selecting a point must visibly return to Seoul at close scale.
+    await page.getByRole('button', { name: 'SYN-D', exact: true }).click();
+    await page.waitForFunction(() => document.getElementById('status').textContent === '지도 준비 완료', undefined, { timeout: 60000 });
+    assert.equal(await page.locator('#region').inputValue(), 'seoul');
+    assert.equal(await page.locator('#zoom').inputValue(), '19');
+    assert.ok((await page.locator('#map-selection').textContent()).includes('SYN-D'));
+    assert.equal(await page.locator('#map-selection').isVisible(), true);
+    await page.screenshot({ path: path.join(os.tmpdir(), 'maptiler-check-selected.png'), fullPage: true });
     await page.locator('#region').selectOption('seoul');
     await page.locator('#zoom').selectOption('19');
     await page.waitForFunction(() => document.getElementById('status').textContent === '지도 준비 완료', undefined, { timeout: 60000 });
@@ -75,6 +84,8 @@ let stage = 'startup';
     for (const id of ['SYN-B', 'SYN-C']) {
       await page.getByRole('button', { name: id, exact: true }).click();
       assert.equal(await page.locator('#selection').textContent(), `선택: ${id}`);
+      assert.equal(await page.getByRole('button', { name: id, exact: true }).getAttribute('aria-pressed'), 'true');
+      assert.equal(await page.locator('#observations [aria-pressed=true]').count(), 1);
     }
     await page.screenshot({ path: path.join(os.tmpdir(), 'maptiler-check-close.png'), fullPage: true });
     stage = 'globe';
@@ -84,6 +95,8 @@ let stage = 'startup';
     stage = 'cleanup';
     await page.getByRole('button', { name: '지도 종료', exact: true }).click();
     assert.equal(await page.locator('canvas').count(), 0);
+    assert.equal(await page.getByRole('button', { name: 'SYN-B', exact: true }).isDisabled(), true);
+    assert.equal(await page.locator('#map-selection').isVisible(), false);
     assert.notEqual(await page.locator('#controls').getAttribute('disabled'), null);
     assert.equal(counts.blocked, 0);
     assert.equal(counts.pageErrors, 0);
