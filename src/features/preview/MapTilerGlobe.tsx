@@ -1,12 +1,20 @@
-import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as sdk from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
-import type { PreviewGlobe } from './PreviewGlobe';
+import type { Observation } from '../../domain/timeline';
+import type { Connection } from './analysis';
+import { formatObservationTime, type DisplayTimezone } from './observationTime';
 import { mapTilerKey } from '../../map-config';
 import { mapConnections, mapPoints } from './mapData';
 
-type Props = ComponentProps<typeof PreviewGlobe>;
+type Props = {
+  points: readonly Observation[]; connections: readonly Connection[];
+  selectedObservation: Observation | null; focusRevision: number;
+  timezone: DisplayTimezone; candidates: readonly Observation[] | null;
+  onPick: (points: Observation[]) => void; onSelect: (point: Observation) => void; onClose: () => void;
+};
 sdk.setWorkerUrl(workerUrl);
 
 export default function MapTilerGlobe(props: Props) {
@@ -17,8 +25,11 @@ export default function MapTilerGlobe(props: Props) {
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [popupHost] = useState(() => document.createElement('div'));
+  const popup = useRef<sdk.Popup | null>(null);
+  const focusedRevision = useRef(props.focusRevision);
   const points = useMemo(() => mapPoints(props.points), [props.points]);
-  const lines = useMemo(() => mapConnections(props.connections, props.differentiated, props.thresholdSeconds), [props.connections, props.differentiated, props.thresholdSeconds]);
+  const lines = useMemo(() => mapConnections(props.connections, false, 0), [props.connections]);
   useEffect(() => {
     if (!container.current || !mapTilerKey) return;
     setReady(false); setFailed(false);
@@ -52,9 +63,8 @@ export default function MapTilerGlobe(props: Props) {
           }
         }
         instance.addSource('observations', { type: 'geojson', data: mapPoints(latest.current.points), maxzoom: 20 });
-        instance.addSource('connections', { type: 'geojson', data: mapConnections(latest.current.connections, latest.current.differentiated, latest.current.thresholdSeconds), maxzoom: 20, tolerance: 0 });
+        instance.addSource('connections', { type: 'geojson', data: mapConnections(latest.current.connections, false, 0), maxzoom: 20, tolerance: 0 });
         instance.addLayer({ id: 'trace-solid', type: 'line', source: 'connections', filter: ['==', ['get', 'gap'], false], paint: { 'line-color': '#087e78', 'line-width': 3 } });
-        instance.addLayer({ id: 'trace-gap', type: 'line', source: 'connections', filter: ['==', ['get', 'gap'], true], paint: { 'line-color': '#de6800', 'line-width': 3, 'line-dasharray': [2, 1.5] } });
         instance.addLayer({ id: 'observations', type: 'circle', source: 'observations', paint: { 'circle-radius': 4, 'circle-color': '#087e78', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1 } });
         instance.addLayer({ id: 'selected', type: 'circle', source: 'observations', filter: ['==', ['get', 'observationId'], ''], paint: { 'circle-radius': 9, 'circle-color': '#ffb74d', 'circle-opacity': .4, 'circle-stroke-color': '#ac4200', 'circle-stroke-width': 3 } });
         instance.on('click', event => {
@@ -66,7 +76,7 @@ export default function MapTilerGlobe(props: Props) {
         setReady(true);
       });
     } catch { setFailed(true); }
-    return () => { active = false; resize.disconnect(); map.current = null; instance?.remove(); };
+    return () => { active = false; resize.disconnect(); popup.current?.remove(); map.current = null; instance?.remove(); };
   }, [revision]);
   useEffect(() => {
     if (!ready || !map.current) return;
@@ -77,10 +87,29 @@ export default function MapTilerGlobe(props: Props) {
     if (!ready || !map.current) return;
     const point = props.selectedObservation;
     map.current.setFilter('selected', ['==', ['get', 'observationId'], point?.id ?? '']);
-    if (point) map.current.jumpTo({ center: [point.coordinate.longitude, point.coordinate.latitude], zoom: 19 });
+    if (point && focusedRevision.current !== props.focusRevision) map.current.jumpTo({ center: [point.coordinate.longitude, point.coordinate.latitude], zoom: 19 });
+    focusedRevision.current = props.focusRevision;
   }, [ready, props.selectedObservation, props.focusRevision]);
+  useEffect(() => {
+    if (!ready || !map.current || !props.selectedObservation) return;
+    const point = props.selectedObservation;
+    const balloon = new sdk.Popup({ closeButton: false, closeOnClick: false, maxWidth: '300px', offset: 8, className: 'observation-popup', focusAfterOpen: false })
+      .setLngLat([point.coordinate.longitude, point.coordinate.latitude]).setDOMContent(popupHost).addTo(map.current);
+    popup.current = balloon;
+    return () => { balloon.remove(); if (popup.current === balloon) popup.current = null; };
+  }, [ready, props.selectedObservation, popupHost]);
+  const selected = props.selectedObservation;
+  const candidates = props.candidates ?? [];
+  const candidateIndex = selected ? candidates.findIndex(point => point.id === selected.id) : -1;
   return <div>
-    {!mapTilerKey ? <p role="alert">지도 키가 없습니다. 개략 지구본을 이용하거나 배포 환경의 VITE_MAPTILER_API_KEY를 설정해 주세요.</p> : <>
+    {selected && createPortal(<div role="dialog" aria-label="관측포인트 상세 정보">
+      <button className="popup-close" aria-label="상세 정보 닫기" onClick={props.onClose}>×</button>
+      <h3>관측 {props.points.indexOf(selected) + 1}</h3>
+      <p>{formatObservationTime(selected.time, props.timezone)}</p>
+      <p>위도 {selected.coordinate.latitude}<br />경도 {selected.coordinate.longitude}</p>
+      {candidates.length > 1 && <div className="popup-candidates"><p>겹친 관측 {candidateIndex + 1} / {candidates.length}</p><button disabled={candidateIndex <= 0} onClick={() => props.onSelect(candidates[candidateIndex - 1]!)}>이전 관측</button><button disabled={candidateIndex >= candidates.length - 1} onClick={() => props.onSelect(candidates[candidateIndex + 1]!)}>다음 관측</button></div>}
+    </div>, popupHost)}
+    {!mapTilerKey ? <p role="alert">지도 키가 없습니다. 배포 환경의 VITE_MAPTILER_API_KEY를 설정해 주세요. JSON 등록과 목록 확인은 계속 사용할 수 있습니다.</p> : <>
       <p role="status">{failed ? '[MAP_UNAVAILABLE] 일부 지도 자료를 불러오지 못했습니다. 기록 목록은 계속 사용할 수 있습니다.' : ready ? '상세 지도 준비 완료 · 지도의 점을 누르면 관측을 선택합니다.' : '상세 지도를 불러오는 중입니다…'}</p>
       {failed && <button onClick={() => setRevision(value => value + 1)}>지도 다시 시도</button>}
       <div style={{ position: 'relative' }}>

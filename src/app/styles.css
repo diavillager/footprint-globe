@@ -39,3 +39,17 @@ footer { margin: 36px 0; font-size: .9rem; color: #b7c7ce; }
 .observation-list button[aria-pressed=true] { border-color: #9de6d8; background: #285b60; }
 .observation-detail { border-top: 1px solid #668997; padding-top: 12px; }
 @media(max-width: 720px) { main { padding: 12px; } section { padding: 14px; } .distributions { grid-template-columns: 1fr; } }
+
+.map-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.map-heading h2 { margin: 0; }
+select { font: inherit; padding: 6px 10px; border: 1px solid #668997; border-radius: 8px; color: #f2fffc; background: #244457; }
+.data-panels { display: grid; gap: 12px; margin-top: 24px; }
+.disclosure-toggle { display: flex; justify-content: space-between; width: 100%; text-align: left; padding: 16px 20px; font-weight: 600; }
+.disclosure-toggle[aria-expanded=true] { background: #285b60; }
+.disclosure section { margin-top: 12px; }
+.observation-popup .maplibregl-popup-content { color: #172d37; border-radius: 12px; padding: 18px; box-shadow: 0 4px 24px #0005; font: 14px/1.6 system-ui, sans-serif; }
+.observation-popup h3 { margin: 0 28px 10px 0; }
+.observation-popup p { margin: 8px 0; overflow-wrap: anywhere; }
+.observation-popup .popup-close { position: absolute; top: 6px; right: 6px; padding: 2px 8px; background: transparent; color: #172d37; border: 0; font-size: 24px; }
+.popup-candidates { border-top: 1px solid #ccc; padding-top: 6px; }
+.popup-candidates button { padding: 5px 9px; margin-right: 6px; }
