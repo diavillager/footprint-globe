@@ -34,4 +34,8 @@ fieldset label { display: inline-flex; gap: 8px; margin: 0 24px 8px 0; align-ite
 .histogram td:nth-child(2) { width: 35%; }
 .bar { height: 9px; background: #69e6d0; border-radius: 3px; }
 footer { margin: 36px 0; font-size: .9rem; color: #b7c7ce; }
+.observation-list { display: grid; gap: 8px; padding-left: 28px; }
+.observation-list button { text-align: left; width: 100%; }
+.observation-list button[aria-pressed=true] { border-color: #9de6d8; background: #285b60; }
+.observation-detail { border-top: 1px solid #668997; padding-top: 12px; }
 @media(max-width: 720px) { main { padding: 12px; } section { padding: 14px; } .distributions { grid-template-columns: 1fr; } }

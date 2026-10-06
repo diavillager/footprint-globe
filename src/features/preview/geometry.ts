@@ -31,7 +31,7 @@ export function arcVertices(a: Coordinate, b: Coordinate): Vector3[] {
   axis.normalize();
   return Array.from({ length: steps + 1 }, (_, i) => i === steps ? end.clone().multiplyScalar(TRACE_RADIUS) : start.clone().applyAxisAngle(axis, angle * i / steps).multiplyScalar(TRACE_RADIUS));
 }
-export function buildPreviewObjects(points: readonly Observation[], connections: readonly Connection[], differentiated: boolean, thresholdSeconds: number, origin = new Vector3()) {
+export function buildPreviewObjects(points: readonly Observation[], connections: readonly Connection[], differentiated: boolean, thresholdSeconds: number, origin = new Vector3(), selectedPoint?: Observation) {
   const positions: number[][] = [[], []];
   let vertices = 0;
   for (const link of connections) {
@@ -75,5 +75,12 @@ export function buildPreviewObjects(points: readonly Observation[], connections:
     `);
   };
   group.add(new Points(dots, dotMaterial)); geometries.push(dots); materials.push(dotMaterial);
+  if (selectedPoint && points.some(point => point.id === selectedPoint.id)) {
+    const highlight = new BufferGeometry();
+    highlight.setAttribute('position', new Float32BufferAttribute(globeVector(selectedPoint.coordinate).multiplyScalar(TRACE_RADIUS).sub(origin).toArray(), 3));
+    const highlightMaterial = new PointsMaterial({ color: '#ffdf59', size: 9, sizeAttenuation: false });
+    highlightMaterial.onBeforeCompile = dotMaterial.onBeforeCompile;
+    group.add(new Points(highlight, highlightMaterial)); geometries.push(highlight); materials.push(highlightMaterial);
+  }
   return { group, dispose: () => { geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); } };
 }

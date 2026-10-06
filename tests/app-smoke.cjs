@@ -119,6 +119,26 @@ let stage = 'startup';
       await page.getByRole('spinbutton', { name: '점선 시간차 기준' }).fill('120');
       assert.equal(await page.getByRole('button', { name: '다음 점선 대상 확인' }).isDisabled(), true);
       assert.equal(await page.getByText('만 표시 중입니다.', { exact: false }).count(), 0);
+      stage += '-selection';
+      await page.getByRole('button', { name: /^관측 2 ·/ }).click();
+      await page.getByRole('heading', { name: '선택한 관측 2', exact: true }).waitFor();
+      assert.equal(await page.getByRole('button', { name: /^관측 2 ·/ }).getAttribute('aria-pressed'), 'true');
+      await page.getByRole('radio', { name: '한국 시간 (UTC+09:00)', exact: true }).check();
+      assert.match(await page.locator('.observation-detail').textContent(), /2040-01-01 10:00:00.000 한국 시간/);
+      await page.getByRole('radio', { name: 'UTC', exact: true }).check();
+      assert.match(await page.locator('.observation-detail').textContent(), /2040-01-01 01:00:00.000 UTC/);
+      // The first two observations share a coordinate but remain independently selectable.
+      await page.locator('canvas').scrollIntoViewIfNeeded();
+      await page.waitForTimeout(200);
+      await page.locator('canvas').click({ position: { x: canvasBox.width / 2, y: 280 } });
+      await page.getByText('클릭 위치의 관측 3개', { exact: false }).waitFor();
+      await page.getByRole('button', { name: /^관측 1 ·/ }).click();
+      await page.getByRole('heading', { name: '선택한 관측 1', exact: true }).waitFor();
+      await page.getByRole('button', { name: /^관측 2 ·/ }).click();
+      await page.getByRole('heading', { name: '선택한 관측 2', exact: true }).waitFor();
+      await page.getByRole('button', { name: '전체 관측 목록', exact: true }).click();
+      if (server === production) await page.getByRole('region', { name: '관측 선택' }).screenshot({ path: path.join(os.tmpdir(), 'footprint-ui-selection-synthetic.png') });
+      assert.match(await page.getByRole('status').textContent(), /연결 2개/);
       stage += '-worker';
       const large = { rawSignals: Array.from({ length: 10123 }, (_, i) => ({ position: {
         LatLng: `35.00°, ${125 + (i % 10) / 100}°`, timestamp: new Date(Date.UTC(2040, 0, 1) + i * 60000).toISOString(), SECRET: 'CANARY',
@@ -126,6 +146,14 @@ let stage = 'startup';
       await page.getByLabel('원본 JSON 선택', { exact: true }).setInputFiles({ name: 'CANARY.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(large)) });
       await page.waitForFunction(() => document.querySelector('[role=status]').textContent.includes('10,123'), { timeout: 30000 });
       assert.match(await page.getByRole('status').textContent(), /연결 10,122개/);
+      assert.equal(await page.locator('.observation-detail').count(), 0);
+      assert.equal(await page.locator('.observation-list button').count(), 20);
+      await page.getByRole('button', { name: '다음 관측 목록', exact: true }).click();
+      await page.getByRole('button', { name: /^관측 21 ·/ }).click();
+      await page.getByRole('heading', { name: '선택한 관측 21', exact: true }).waitFor();
+      await page.getByRole('button', { name: '이전 관측 목록', exact: true }).click();
+      await page.getByRole('button', { name: '선택한 관측의 목록으로', exact: true }).click();
+      assert.equal(await page.getByRole('button', { name: /^관측 21 ·/ }).getAttribute('aria-pressed'), 'true');
       assert.doesNotMatch(await page.locator('main').textContent(), /CANARY|SECRET_PROFILE/);
       assert.equal(await page.locator('input[type=file]').inputValue(), '');
       assert.equal(await page.getByRole('alert').count(), 0);
@@ -139,6 +167,36 @@ let stage = 'startup';
       await page.locator('canvas').waitFor();
       await page.getByRole('button', { name: '기록 지우기' }).click();
       assert.equal(await page.locator('canvas').count(), 0);
+      stage += '-worker-lifecycle';
+      // Controlled workers exercise races without depending on machine speed.
+      await page.evaluate(() => {
+        window.syntheticWorkers = [];
+        window.Worker = class {
+          constructor() { window.syntheticWorkers.push(this); this.terminated = false; }
+          postMessage() {}
+          terminate() { this.terminated = true; }
+        };
+      });
+      const syntheticFile = { name: 'CANARY.json', mimeType: 'application/json', buffer: Buffer.from('{}') };
+      await page.getByLabel('원본 JSON 선택', { exact: true }).setInputFiles(syntheticFile);
+      await page.getByRole('button', { name: '처리 취소', exact: true }).waitFor();
+      await page.getByLabel('원본 JSON 선택', { exact: true }).setInputFiles(syntheticFile);
+      assert.equal(await page.evaluate(() => window.syntheticWorkers[0].terminated), true);
+      await page.evaluate(() => window.syntheticWorkers[0].onmessage({ data: { ok: false, code: 'INVALID_JSON' } }));
+      assert.match(await page.getByRole('status').textContent(), /검사하고 정렬/);
+      await page.evaluate(() => window.syntheticWorkers[1].onmessageerror({ data: 'CANARY' }));
+      await page.waitForFunction(() => document.querySelector('[role=status]').textContent.includes('FILE_READ_FAILED'));
+      assert.equal(await page.evaluate(() => window.syntheticWorkers[1].terminated), true);
+      await page.getByLabel('원본 JSON 선택', { exact: true }).setInputFiles(syntheticFile);
+      await page.getByRole('button', { name: '처리 취소', exact: true }).click();
+      assert.equal(await page.evaluate(() => window.syntheticWorkers[2].terminated), true);
+      await page.evaluate(() => window.syntheticWorkers[2].onmessage({ data: { ok: false, code: 'INVALID_JSON' } }));
+      assert.match(await page.getByRole('status').textContent(), /원본을 선택하거나/);
+      await page.getByLabel('원본 JSON 선택', { exact: true }).setInputFiles(syntheticFile);
+      await page.evaluate(() => window.syntheticWorkers[3].onerror({ message: 'CANARY', preventDefault() {} }));
+      await page.waitForFunction(() => document.querySelector('[role=status]').textContent.includes('FILE_READ_FAILED'));
+      assert.equal(await page.evaluate(() => window.syntheticWorkers[3].terminated), true);
+      assert.doesNotMatch(await page.locator('main').textContent(), /CANARY/);
       if (server === dev) {
         // Known non-private configuration exercises JSON denial without inspecting personal files.
         const denied = await context.request.get(new URL('package.json', origin).href);
@@ -149,7 +207,7 @@ let stage = 'startup';
       assert.equal(leaked, false);
       await context.close();
     }
-    process.stdout.write('App smoke passed: development/production globe, display comparison, 10,123 synthetic positions via worker, invalid-file recovery, clear, no metadata leakage/storage, JSON access denied, 0 external requests, 0 page errors.\n');
+    process.stdout.write('App smoke passed: development/production globe, metre-scale links, overlapping observation selection, UTC/Korea switching, 10,123-position pagination, worker import, recovery/clear, no metadata leakage/storage, JSON access denied, 0 external requests, 0 page errors.\n');
   } finally {
     await browser.close();
     if (dev) await dev.close();

@@ -6,18 +6,27 @@ import type { Observation } from '../../domain/timeline';
 import type { Connection } from './analysis';
 import { arcVertices, buildPreviewObjects, focusAltitude, globeVector, MIN_ALTITUDE, MAX_ALTITUDE, TRACE_ALTITUDE, TRACE_RADIUS } from './geometry';
 import { land } from '../../assets/land';
+import { pickObservations } from './picking';
 
-interface Props { points: readonly Observation[]; connections: readonly Connection[]; differentiated: boolean; thresholdSeconds: number }
-export function PreviewGlobe({ points, connections, differentiated, thresholdSeconds }: Props) {
+interface Props { points: readonly Observation[]; connections: readonly Connection[]; differentiated: boolean; thresholdSeconds: number; selectedObservation: Observation | null; focusRevision: number; onPick: (points: Observation[]) => void }
+export function PreviewGlobe({ points, connections, differentiated, thresholdSeconds, selectedObservation, focusRevision, onPick }: Props) {
   const globe = useRef<GlobeMethods | undefined>(undefined);
   const container = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(700);
   const [objects, setObjects] = useState<{ mesh: Object3D }[]>([]);
   const [failed, setFailed] = useState(false);
   const [inspectIndex, setInspectIndex] = useState(-1);
+  const [focusAnchor, setFocusAnchor] = useState<Observation | null>(null);
+  const pointerStart = useRef<{ x: number; y: number; dragged: boolean } | null>(null);
   const gaps = useMemo(() => connections.filter(c => c.seconds > thresholdSeconds), [connections, thresholdSeconds]);
   const selected = differentiated && inspectIndex >= 0 ? gaps[inspectIndex] : undefined;
   useEffect(() => { setInspectIndex(-1); }, [points, differentiated, thresholdSeconds]);
+  useEffect(() => {
+    if (!selectedObservation) return;
+    setInspectIndex(-1);
+    setFocusAnchor(selectedObservation);
+    globe.current?.pointOfView({ lat: selectedObservation.coordinate.latitude, lng: selectedObservation.coordinate.longitude, altitude: focusAltitude(.1) }, 0);
+  }, [selectedObservation, focusRevision]);
   const inspectNext = () => {
     const next = (inspectIndex + 1) % gaps.length, link = gaps[next];
     if (!link) return;
@@ -38,6 +47,7 @@ export function PreviewGlobe({ points, connections, differentiated, thresholdSec
     }
   };
   const home = () => {
+    setFocusAnchor(points[0] ?? null);
     // Wheel/pinch controls otherwise allow the camera inside the raised trace layer.
     const view = globe.current;
     if (view) {
@@ -62,16 +72,27 @@ export function PreviewGlobe({ points, connections, differentiated, thresholdSec
   }, []);
   useEffect(() => {
     try {
-      const anchor = selected?.from ?? points[0];
+      const anchor = selected?.from ?? focusAnchor ?? points[0];
       const origin = anchor ? globeVector(anchor.coordinate).multiplyScalar(TRACE_RADIUS) : new Vector3();
-      const result = buildPreviewObjects(selected ? [selected.from, selected.to] : points, selected ? [selected] : connections, differentiated, thresholdSeconds, origin);
+      const result = buildPreviewObjects(selected ? [selected.from, selected.to] : points, selected ? [selected] : connections, differentiated, thresholdSeconds, origin, selectedObservation ?? undefined);
       setObjects([{ mesh: result.group }]); setFailed(false);
       return result.dispose;
     } catch { setObjects([]); setFailed(true); }
-  }, [points, connections, differentiated, thresholdSeconds, selected]);
+  }, [points, connections, differentiated, thresholdSeconds, selected, selectedObservation, focusAnchor]);
   useEffect(() => { home(); }, [points]);
   useEffect(() => () => { material.dispose(); }, [material]);
-  return <div className="globe-wrap" ref={container}>
+  return <div className="globe-wrap" ref={container}
+    onPointerDown={e => { if ((e.target as HTMLElement).tagName === 'CANVAS' && e.button === 0) pointerStart.current = { x: e.clientX, y: e.clientY, dragged: false }; }}
+    onPointerMove={e => { const start = pointerStart.current; if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 6) start.dragged = true; }}
+    onPointerCancel={() => { pointerStart.current = null; }}
+    onPointerUp={e => {
+      const start = pointerStart.current; pointerStart.current = null;
+      const view = globe.current;
+      if (!start || start.dragged || !view || (e.target as HTMLElement).tagName !== 'CANVAS') return;
+      const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+      const candidates = pickObservations(selected ? [selected.from, selected.to] : points, view.camera(), rect.width, rect.height, e.clientX - rect.left, e.clientY - rect.top);
+      if (candidates.length) onPick(candidates);
+    }}>
     {differentiated && <div>
       <p>점선 대상 거리: 같은 좌표 {gaps.filter(c => c.km === 0).length}개 · 0m 초과–100m 이하 {gaps.filter(c => c.km > 0 && c.km <= .1).length}개 · 100m 초과–1km 이하 {gaps.filter(c => c.km > .1 && c.km <= 1).length}개 · 1km 초과 {gaps.filter(c => c.km > 1).length}개</p>
       <button onClick={inspectNext} disabled={!gaps.length}>다음 점선 대상 확인</button>
