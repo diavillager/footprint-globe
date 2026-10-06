@@ -87,11 +87,61 @@ test('unknown nested fields exclude whole records without reflecting keys or val
   assert.doesNotMatch(JSON.stringify(result), /SECRET_|FICTIONAL_/);
   assert.ok(result.report.reasons.UNKNOWN_FIELD);
 });
-test('unknown top-level metadata stops output, even with otherwise valid records', () => {
-  const data = fixtures.modern(); data.SECRET_TOP_KEY = 'SECRET_TOP_VALUE';
+test('unknown root metadata is omitted without reflecting keys or any nested values', () => {
+  for (const fixture of [fixtures.modern, fixtures.legacy]) {
+    const data = fixture();
+    data.SECRET_TOP_KEY = 'SECRET_TOP_VALUE';
+    data.rawSignals = [{ point: 'geo:33.125,44.625', time: '2021-02-03T01:23:45Z', deviceId: 'SECRET_DEVICE' }];
+    data.userLocationProfile = { address: 'SECRET_ADDRESS', placeId: 'SECRET_ID', latitudeE7: 331250000 };
+    const before = JSON.stringify(data);
+    const result = run(data), output = parsed(result);
+    assert.deepEqual(Object.keys(output), Object.keys(fixture()));
+    assert.equal(result.report.excludedRootFields, 3);
+    assert.equal(result.report.reasons.EXCLUDED_ROOT_FIELD, 3);
+    assert.equal(result.report.inputRecords, Object.values(fixture())[0].length);
+    assert.equal(JSON.stringify(data), before);
+    assert.doesNotMatch(JSON.stringify(result) + formatReport(result.report), /SECRET_|rawSignals|userLocationProfile|33\.125|331250000|2021-02-03/);
+    sameShape(fixture(), output);
+  }
+});
+test('ambiguous roots are rejected even when one known field is not an array', () => {
+  for (const value of [[], {}, null, 'SECRET_VALUE']) {
+    const data = fixtures.modern(); data.timelineObjects = value;
+    const result = run(data);
+    assert.equal(result.ok, false); assert.equal(result.text, undefined);
+    assert.equal(result.report.reasons.AMBIGUOUS_ROOT, 1);
+    assert.doesNotMatch(JSON.stringify(result) + formatReport(result.report), /SECRET/);
+  }
+});
+test('unsupported roots disclose only fixed structural diagnostics', () => {
+  for (const data of [{ SECRET_KEY: fixtures.modern() }, { semanticSegments: 'SECRET_VALUE' }, { timelineObjects: null }, 'SECRET_TEXT']) {
+    const result = run(data);
+    assert.equal(result.ok, false); assert.equal(result.text, undefined);
+    assert.doesNotMatch(JSON.stringify(result) + formatReport(result.report), /SECRET/);
+    assert.ok(result.report.reasons.UNSUPPORTED_ROOT || result.report.reasons.ROOT_FIELD_TYPE);
+  }
+  assert.equal(run({ semanticSegments: 42 }).report.knownRootFields.semanticSegments, '배열 아님');
+  assert.equal(run({ SECRET_KEY: [] }).report.knownRootFields.semanticSegments, '없음');
+});
+test('root exclusions do not bypass unsafe records or invent missing coverage', () => {
+  const data = fixtures.modern();
+  for (const record of data.semanticSegments) record.secret = 'SECRET_RECORD';
+  data.SECRET_META = 'SECRET_VALUE';
   const result = run(data);
   assert.equal(result.ok, false); assert.equal(result.text, undefined);
-  assert.doesNotMatch(JSON.stringify(result), /SECRET_/);
+  assert.equal(result.report.excludedRootFields, 1);
+  assert.equal(result.report.excludedRecords, data.semanticSegments.length);
+  assert.equal(result.report.reasons.UNKNOWN_FIELD, data.semanticSegments.length);
+  assert.doesNotMatch(JSON.stringify(result), /SECRET/);
+});
+test('prototype-looking root metadata is safely omitted without changing prototypes', () => {
+  const input = JSON.stringify(fixtures.modern()).replace('{', '{"__proto__":{"SECRET_KEY":"SECRET_VALUE"},"constructor":"SECRET_CONSTRUCTOR",');
+  const result = sanitizeText(input);
+  const output = parsed(result);
+  assert.deepEqual(Object.keys(output), ['semanticSegments']);
+  assert.equal(result.report.excludedRootFields, 2);
+  assert.doesNotMatch(JSON.stringify(result), /SECRET|__proto__|constructor/);
+  assert.equal({}.SECRET_KEY, undefined);
 });
 test('unknown fields in path points are never ignored during downsampling', () => {
   const data = fixtures.modern();

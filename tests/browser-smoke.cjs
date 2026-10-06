@@ -24,11 +24,13 @@ const fixtures = require('./synthetic-fixtures.cjs');
     assert.equal(await page.locator('#save').isDisabled(), true);
     const visit = JSON.stringify(fixtures.modern().semanticSegments[0]);
     const large = '{"semanticSegments":[' + Array(65000).fill(visit).concat(fixtures.modern().semanticSegments.slice(1, 3).map(r => JSON.stringify(r))).join(',') + ']}';
-    for (const input of [...Object.values(fixtures).map(fixture => JSON.stringify(fixture())), large]) {
+    const extraMetadata = JSON.stringify({ ...fixtures.modern(), SECRET_ROOT_KEY: { deviceId: 'SECRET_DEVICE' }, rawSignals: [{ point: 'geo:33.125,44.625' }] });
+    for (const input of [...Object.values(fixtures).map(fixture => JSON.stringify(fixture())), large, extraMetadata]) {
       await page.locator('#source').setInputFiles({ name: 'synthetic-only.json', mimeType: 'application/json', buffer: Buffer.from(input) });
       await page.waitForFunction(() => !document.getElementById('save').disabled);
       assert.equal(await page.locator('#source').inputValue(), '');
-      assert.doesNotMatch(await page.locator('#status').textContent(), /FICTIONAL_|CANARY|2022-/);
+      assert.doesNotMatch(await page.locator('#status').textContent(), /FICTIONAL_|CANARY|2022-|SECRET|rawSignals|33\.125/);
+      if (input === extraMetadata) assert.match(await page.locator('#status').textContent(), /제외한 최상위 필드: 2/);
       const pending = page.waitForEvent('download');
       await page.locator('#save').click();
       const download = await pending;
@@ -37,7 +39,7 @@ const fixtures = require('./synthetic-fixtures.cjs');
       for await (const chunk of await download.createReadStream()) chunks.push(chunk);
       const output = Buffer.concat(chunks).toString('utf8');
       JSON.parse(output);
-      assert.doesNotMatch(output, /FICTIONAL_|CANARY|2022-/);
+      assert.doesNotMatch(output, /FICTIONAL_|CANARY|2022-|SECRET|rawSignals|33\.125/);
       assert.ok(Buffer.byteLength(output) <= 65536);
       await download.delete();
     }
@@ -47,7 +49,7 @@ const fixtures = require('./synthetic-fixtures.cjs');
     assert.doesNotMatch(await page.locator('#status').textContent(), /SECRET/);
     assert.equal(externalRequests, 0);
     assert.equal(pageErrors, 0);
-    process.stdout.write('Browser smoke passed: 3 synthetic formats plus a large synthetic export, 4 downloads, invalid-input recovery, 0 external requests, 0 page errors.\n');
+    process.stdout.write('Browser smoke passed: 3 synthetic formats, large export, safe root exclusions, 5 downloads, invalid-input recovery, 0 external requests, 0 page errors.\n');
     await context.close();
   } finally { await browser.close(); }
 })().catch(() => { process.stderr.write('Browser smoke failed. Only synthetic inputs were used.\n'); process.exitCode = 1; });

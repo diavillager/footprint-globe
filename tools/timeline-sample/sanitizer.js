@@ -248,7 +248,10 @@
 
   const REASONS = Object.freeze({
     INVALID_JSON: 'JSON 구문이 올바르지 않습니다.', INPUT_LIMIT: '입력 크기 또는 기록 수 제한을 초과했습니다.',
-    UNSUPPORTED_ROOT: '지원하지 않는 최상위 구조이거나 알 수 없는 최상위 필드가 있습니다.',
+    UNSUPPORTED_ROOT: '최상위에서 지원하는 기록 배열을 찾지 못했습니다. 임의의 중첩 구조는 추측해서 처리하지 않습니다.',
+    AMBIGUOUS_ROOT: '서로 다른 기록 형식이 함께 있어 처리 대상을 안전하게 결정할 수 없습니다.',
+    ROOT_FIELD_TYPE: '지원하는 기록 필드가 있지만 배열 자료형이 아닙니다.',
+    EXCLUDED_ROOT_FIELD: '지원하는 기록 배열 외의 최상위 필드는 안전하게 치환할 수 없어 통째로 제외했습니다. 이름과 값은 표시하지 않습니다.',
     UNKNOWN_FIELD: '허용 목록에 없는 필드가 있어 해당 기록을 제외했습니다.',
     INVALID_STRUCTURE: '필드의 중첩 구조나 자료형이 지원 범위와 다릅니다.',
     MISSING_FIELD: '안전한 변환에 필요한 필드가 없습니다.', INVALID_TIME: '시간 형식 또는 시간 관계를 안전하게 처리할 수 없습니다.',
@@ -259,18 +262,27 @@
     INTERNAL_FAILURE: '안전한 변환을 완료하지 못했습니다.'
   });
   function sanitizeText(input) {
-    const report = { format: '미판별', inputRecords: 0, processedRecords: 0, excludedRecords: 0, sampledOutRecords: 0, outputRecords: 0, visits: 0, activities: 0, paths: 0, omittedArrayItems: 0, coordinatePairs: 0, outputBytes: 0, reasons: Object.create(null), warnings: ['시간 간격·체류 기간·필드 구조는 남습니다.', '가상 좌표는 원본 경로의 모양·거리·방향을 보존하지 않습니다.', '시간대·장소·식별자·보조 속성은 가상 값으로 바뀝니다.'] };
+    const report = { format: '미판별', rootType: '미판별', knownRootFields: { semanticSegments: '없음', timelineObjects: '없음' }, excludedRootFields: 0, inputRecords: 0, processedRecords: 0, excludedRecords: 0, sampledOutRecords: 0, outputRecords: 0, visits: 0, activities: 0, paths: 0, omittedArrayItems: 0, coordinatePairs: 0, outputBytes: 0, reasons: Object.create(null), warnings: ['시간 간격·체류 기간·필드 구조는 남습니다.', '가상 좌표는 원본 경로의 모양·거리·방향을 보존하지 않습니다.', '시간대·장소·식별자·보조 속성은 가상 값으로 바뀝니다.'] };
     const reason = code => { const safe = own(REASONS, code) ? code : 'INTERNAL_FAILURE'; report.reasons[safe] = (report.reasons[safe] || 0) + 1; };
     try {
       if (typeof input !== 'string' || new TextEncoder().encode(input).length > LIMITS.inputBytes) fail('INPUT_LIMIT');
       let data;
       try { data = JSON.parse(input.replace(/^\uFEFF/, '')); } catch { fail('INVALID_JSON'); }
       let records, rootKey, legacy = false;
+      report.rootType = Array.isArray(data) ? '배열' : isObject(data) ? '객체' : '기타';
       if (Array.isArray(data)) { records = data; report.format = '기기 Timeline 배열'; }
-      else if (isObject(data) && Object.keys(data).length === 1 && own(data, 'semanticSegments') && Array.isArray(data.semanticSegments)) {
-        rootKey = 'semanticSegments'; records = data[rootKey]; report.format = 'semanticSegments';
-      } else if (isObject(data) && Object.keys(data).length === 1 && own(data, 'timelineObjects') && Array.isArray(data.timelineObjects)) {
-        rootKey = 'timelineObjects'; records = data[rootKey]; legacy = true; report.format = 'timelineObjects';
+      else if (isObject(data)) {
+        // Only fixed, allowlisted names reach diagnostics. Never reflect unknown
+        // keys (which can themselves contain personal data), or traverse their values.
+        const present = ['semanticSegments', 'timelineObjects'].filter(key => own(data, key));
+        for (const key of present) report.knownRootFields[key] = Array.isArray(data[key]) ? '배열' : '배열 아님';
+        if (present.length > 1) fail('AMBIGUOUS_ROOT');
+        if (!present.length) fail('UNSUPPORTED_ROOT');
+        rootKey = present[0];
+        if (!Array.isArray(data[rootKey])) fail('ROOT_FIELD_TYPE');
+        records = data[rootKey]; legacy = rootKey === 'timelineObjects'; report.format = rootKey;
+        report.excludedRootFields = Object.keys(data).length - 1;
+        if (report.excludedRootFields) report.reasons.EXCLUDED_ROOT_FIELD = report.excludedRootFields;
       } else fail('UNSUPPORTED_ROOT');
       report.inputRecords = records.length;
       if (records.length > LIMITS.inputRecords) fail('INPUT_LIMIT');
@@ -321,10 +333,12 @@
   function formatReport(report) {
     return [
       `형식: ${report.format}`, `입력 기록: ${report.inputRecords}`, `검증 통과: ${report.processedRecords}`,
+      `최상위 자료형: ${report.rootType}`, `알려진 기록 필드: semanticSegments=${report.knownRootFields.semanticSegments}, timelineObjects=${report.knownRootFields.timelineObjects}`,
+      `제외한 최상위 필드: ${report.excludedRootFields}`,
       `안전상 제외: ${report.excludedRecords}`, `크기 제한으로 미선택: ${report.sampledOutRecords}`,
       `샘플 기록: ${report.outputRecords} (방문 ${report.visits}, 이동 ${report.activities}, 상세 경로 ${report.paths})`,
       `배열 축소 항목: ${report.omittedArrayItems}`, `가상 좌표 쌍: ${report.coordinatePairs}`, `출력 크기: ${report.outputBytes} bytes`,
-      ...Object.entries(report.reasons).map(([code, count]) => `${REASONS[code]} (${count}건)`),
+      ...Object.entries(report.reasons).map(([code, count]) => `[${code}] ${REASONS[code]} (${count}건)`),
       ...report.warnings.map(w => `안내: ${w}`)
     ].join('\n');
   }
