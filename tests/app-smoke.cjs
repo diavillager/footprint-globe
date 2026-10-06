@@ -65,6 +65,7 @@ let stage = 'startup';
       await page.waitForTimeout(500);
       if (server === production) await page.locator('canvas').screenshot({ path: path.join(os.tmpdir(), 'footprint-preview-wheel-synthetic.png') });
       const zoomImage = await page.locator('canvas').screenshot();
+      if (server === dev) await page.locator('canvas').screenshot({ path: path.join(os.tmpdir(), 'footprint-ui-wheel-synthetic.png') });
       const visible = await page.evaluate(async bytes => {
         const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: 'image/png' }));
         const canvas = document.createElement('canvas');
@@ -97,6 +98,24 @@ let stage = 'startup';
       await page.getByText('양 끝 좌표가 같아 그릴 선의 길이가 없습니다.', { exact: false }).waitFor();
       await page.getByRole('button', { name: '다음 점선 대상 확인' }).click();
       await page.getByText('두 지점은 100m 이내입니다.', { exact: false }).waitFor();
+      await page.waitForTimeout(500);
+      const closeImage = await page.locator('canvas').screenshot();
+      const closeVisibility = await page.evaluate(async bytes => {
+        const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: 'image/png' }));
+        const canvas = document.createElement('canvas'); canvas.width = bitmap.width; canvas.height = bitmap.height;
+        const ctx = canvas.getContext('2d'); ctx.drawImage(bitmap, 0, 0); bitmap.close();
+        const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        let left = canvas.width, right = 0, orange = 0;
+        for (let i = 0; i < pixels.length; i += 4) {
+          if (pixels[i] > 220 && pixels[i + 1] > 230 && pixels[i + 2] > 220) {
+            const x = (i / 4) % canvas.width; left = Math.min(left, x); right = Math.max(right, x);
+          }
+          if (pixels[i] > 180 && pixels[i + 1] > 90 && pixels[i + 2] < 180) orange++;
+        }
+        return { span: right - left, orange };
+      }, Array.from(closeImage));
+      assert.ok(closeVisibility.span > 100 && closeVisibility.orange > 20, 'Metre-scale synthetic endpoints and dashed connection are visible');
+      if (server === production) await page.locator('canvas').screenshot({ path: path.join(os.tmpdir(), 'footprint-ui-close-synthetic.png') });
       await page.getByRole('spinbutton', { name: '점선 시간차 기준' }).fill('120');
       assert.equal(await page.getByRole('button', { name: '다음 점선 대상 확인' }).isDisabled(), true);
       assert.equal(await page.getByText('만 표시 중입니다.', { exact: false }).count(), 0);

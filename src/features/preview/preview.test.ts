@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { parseRawPreview } from '../../parser/rawPreview';
 import { syntheticRawPreview } from '../../fixtures/preview';
 import { connectAll, distribution, separationKm } from './analysis';
-import { arcVertices, buildPreviewObjects, dashUnit } from './geometry';
+import { arcVertices, buildPreviewObjects, dashUnit, focusAltitude, TRACE_RADIUS, MIN_ALTITUDE } from './geometry';
 import { LineSegments, PerspectiveCamera, Points, Vector3 } from 'three';
 
 it('anchors line endpoints to point centers through rotation and close zoom', () => {
@@ -32,6 +32,32 @@ it('anchors line endpoints to point centers through rotation and close zoom', ()
 
 const parse = (data: unknown) => parseRawPreview(JSON.stringify(data), 'dataset:test');
 const pos = (stamp: string, coordinate = '0°, 0°') => ({ position: { LatLng: coordinate, timestamp: stamp } });
+it('fits metre-scale links above the trace and preserves precision around an offset origin', () => {
+  const result = parse({ rawSignals: [pos('2040-01-01T00:00:00Z', '35°, 125°'), pos('2040-01-01T01:00:00Z', '35.00001°, 125.00001°')] });
+  if (!result.ok) throw new Error('fixture');
+  const links = connectAll(result.data.observations);
+  const arc = arcVertices(links[0]!.from.coordinate, links[0]!.to.coordinate);
+  const drawing = buildPreviewObjects(result.data.observations, links, true, 0, arc[0]);
+  try {
+    const dots = (drawing.group.children[2] as Points).geometry.getAttribute('position');
+    const line = (drawing.group.children[1] as LineSegments).geometry.getAttribute('position');
+    const camera = new PerspectiveCamera(50, 1, .0000001, 1000);
+    camera.position.copy(arc[0]!).add(arc[1]!).normalize().multiplyScalar(100 * (1 + focusAltitude(links[0]!.km)));
+    camera.lookAt(0, 0, 0); camera.updateMatrixWorld();
+    const projected = [0, 1].map(i => {
+      const dot = new Vector3().fromBufferAttribute(dots, i);
+      expect(dot.toArray()).toEqual(new Vector3().fromBufferAttribute(line, i).toArray());
+      const world = dot.add(drawing.group.position);
+      expect(world.distanceTo(arc[i]!)).toBeLessThan(1e-10);
+      return world.project(camera);
+    });
+    const screenPixels = projected[0]!.distanceTo(projected[1]!) * 280;
+    expect(screenPixels).toBeGreaterThan(100);
+    expect(projected.every(p => p.z > -1 && p.z < 1)).toBe(true);
+    expect(100 * (1 + MIN_ALTITUDE)).toBeGreaterThan(TRACE_RADIUS);
+    expect(focusAltitude(0)).toBe(MIN_ALTITUDE);
+  } finally { drawing.dispose(); }
+});
 it('shrinks dash spacing with zoom and preserves 30/120-minute classification boundaries', () => {
   expect(dashUnit(101.5, 50, 560)).toBeLessThan(dashUnit(270, 50, 560) / 100);
   expect(dashUnit(108, 50, 1120)).toBeCloseTo(dashUnit(108, 50, 560) / 2);

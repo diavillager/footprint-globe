@@ -3,11 +3,18 @@ import type { Coordinate, Observation } from '../../domain/timeline';
 import type { Connection } from './analysis';
 
 // Points and line endpoints must share a radius to avoid parallax while orbiting.
-const TRACE_RADIUS = 100.4;
+export const TRACE_RADIUS = 100.4;
+// Altitude is measured from the globe, not from the elevated observation layer.
+export const TRACE_ALTITUDE = TRACE_RADIUS / 100 - 1;
+export const MIN_ALTITUDE = TRACE_ALTITUDE + .00000003;
+export const MAX_ALTITUDE = 4;
+export function focusAltitude(km: number): number {
+  return Math.max(MIN_ALTITUDE, Math.min(MAX_ALTITUDE, TRACE_ALTITUDE + km / 6371.0088 * 2));
+}
 
 /** Approximate world units per screen pixel on the facing trace surface. */
 export function dashUnit(cameraDistance: number, verticalFov: number, height: number): number {
-  return 2 * Math.max(.01, cameraDistance - TRACE_RADIUS) * Math.tan(verticalFov * Math.PI / 360) / Math.max(1, height);
+  return 2 * Math.max(.0000001, cameraDistance - TRACE_RADIUS) * Math.tan(verticalFov * Math.PI / 360) / Math.max(1, height);
 }
 
 export function globeVector(c: Coordinate): Vector3 {
@@ -24,7 +31,7 @@ export function arcVertices(a: Coordinate, b: Coordinate): Vector3[] {
   axis.normalize();
   return Array.from({ length: steps + 1 }, (_, i) => i === steps ? end.clone().multiplyScalar(TRACE_RADIUS) : start.clone().applyAxisAngle(axis, angle * i / steps).multiplyScalar(TRACE_RADIUS));
 }
-export function buildPreviewObjects(points: readonly Observation[], connections: readonly Connection[], differentiated: boolean, thresholdSeconds: number) {
+export function buildPreviewObjects(points: readonly Observation[], connections: readonly Connection[], differentiated: boolean, thresholdSeconds: number, origin = new Vector3()) {
   const positions: number[][] = [[], []];
   let vertices = 0;
   for (const link of connections) {
@@ -32,9 +39,12 @@ export function buildPreviewObjects(points: readonly Observation[], connections:
     vertices += (arc.length - 1) * 2;
     if (vertices > 2000000) throw new Error('DISPLAY_LIMIT');
     const target = positions[differentiated && link.seconds > thresholdSeconds ? 1 : 0]!;
-    for (let i = 1; i < arc.length; i++) target.push(...arc[i - 1]!.toArray(), ...arc[i]!.toArray());
+    for (let i = 1; i < arc.length; i++) target.push(...arc[i - 1]!.clone().sub(origin).toArray(), ...arc[i]!.clone().sub(origin).toArray());
   }
   const group = new Group();
+  // Subtract in double precision before making GPU Float32 buffers. This keeps
+  // metre-scale differences when a close-up is centered far from world zero.
+  group.position.copy(origin);
   const geometries: BufferGeometry[] = [], materials: (LineBasicMaterial | LineDashedMaterial | PointsMaterial)[] = [];
   positions.forEach((values, i) => {
     const geometry = new BufferGeometry();
@@ -47,7 +57,8 @@ export function buildPreviewObjects(points: readonly Observation[], connections:
       lines.onBeforeRender = (renderer, _scene, camera) => {
         if (!(camera instanceof PerspectiveCamera)) return;
         renderer.getSize(viewport);
-        const unit = dashUnit(camera.getWorldPosition(cameraPosition).distanceTo(lines.getWorldPosition(center)), camera.getEffectiveFOV(), viewport.y);
+        group.parent?.getWorldPosition(center);
+        const unit = dashUnit(camera.getWorldPosition(cameraPosition).distanceTo(center), camera.getEffectiveFOV(), viewport.y);
         material.dashSize = unit * 6;
         material.gapSize = unit * 4;
       };
@@ -55,7 +66,7 @@ export function buildPreviewObjects(points: readonly Observation[], connections:
     group.add(lines); geometries.push(geometry); materials.push(material);
   });
   const dots = new BufferGeometry();
-  dots.setAttribute('position', new Float32BufferAttribute(points.flatMap(p => globeVector(p.coordinate).multiplyScalar(TRACE_RADIUS).toArray()), 3));
+  dots.setAttribute('position', new Float32BufferAttribute(points.flatMap(p => globeVector(p.coordinate).multiplyScalar(TRACE_RADIUS).sub(origin).toArray()), 3));
   // Screen-sized circles keep dense observations readable when zooming in.
   const dotMaterial = new PointsMaterial({ color: '#ecfff9', size: 3, sizeAttenuation: false });
   dotMaterial.onBeforeCompile = shader => {
