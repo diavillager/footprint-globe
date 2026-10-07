@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import type { Observation } from '../../domain/timeline';
 import { parseRawPreview } from '../../parser/rawPreview';
-import { inspectLocations, projectLocations } from './locationQuality';
+import { excludedLocationIds, inspectLocations, projectLocations } from './locationQuality';
 import { groupByLandmark } from '../landmarks/groups';
 import { summarizePlaces } from '../landmarks/placeSummary';
 import type { LandmarkCandidate } from '../landmarks/geoapify';
@@ -125,4 +125,25 @@ it('filters before planning requests, splits same-place visits at breaks, and ca
 it('handles 100,000 stationary observations without recursive scans or fabricated suspects', () => {
   const points=Array.from({length:100000},(_,i)=>point(i,i));
   expect(inspectLocations(points).suspects.size).toBe(0);
+});
+
+it('retains identical mapping membership for zero suspects, restored suspects, and inactive restore changes', () => {
+  const none=inspectLocations([point(0,0),point(1,60)]);
+  expect(excludedLocationIds(none,true,new Set())).toEqual(excludedLocationIds(none,false,new Set()));
+  const report=inspectLocations(single()), restored=new Set(report.suspects.keys());
+  expect(excludedLocationIds(report,true,restored)).toEqual(excludedLocationIds(report,false,restored));
+  expect(excludedLocationIds(report,false,new Set())).toEqual(excludedLocationIds(report,false,restored));
+  expect(excludedLocationIds(report,true,new Set())).not.toEqual(excludedLocationIds(report,true,restored));
+});
+it('explains conservative misses without classifying them as errors or changing thresholds', () => {
+  const slow=[point(0,0),point(1,60),point(2,120,.027),point(3,180),point(4,240)];
+  const missingContext=[point(0,0,.01),...single().slice(1)];
+  expect(inspectLocations(slow).suspects.size).toBe(0);
+  expect(inspectLocations(slow).screening?.rejected.entrySpeed).toBe(2);
+  expect(inspectLocations(missingContext).screening?.rejected.beforeContext).toBeGreaterThan(0);
+  expect(inspectLocations(single().map(p=>({...p,accuracyMeters:5000}))).screening?.rejected.accuracy).toBe(2);
+  for (const points of [single(),burst(),slow,missingContext]) {
+    const report=inspectLocations(points), totals=report.screening!;
+    expect(totals.detected+Object.values(totals.rejected).reduce((a,b)=>a+b,0)).toBe(totals.candidates);
+  }
 });

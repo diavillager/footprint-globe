@@ -1,4 +1,4 @@
-import { projectLocations, type QualityReport } from './locationQuality';
+import { excludedLocationIds, projectLocationSubset, type QualityReport } from './locationQuality';
 import { QualityControls } from './QualityControls';
 import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { PREVIEW_LIMITS } from '../../parser';
@@ -69,7 +69,9 @@ export function LocalPreview() {
   const [quality, setQuality] = useState<QualityReport>(emptyQuality);
   const [hideSuspects, setHideSuspects] = useState(true);
   const [restored, setRestored] = useState<ReadonlySet<ObservationId>>(new Set());
-  const projection = useMemo(() => projectLocations(data?.observations ?? empty, quality, hideSuspects, restored), [data,quality,hideSuspects,restored]);
+  // The key encodes actual membership, so no-op preference changes preserve the session and camera.
+  const excludedKey = useMemo(() => JSON.stringify(excludedLocationIds(quality,hideSuspects,restored)), [quality,hideSuspects,restored]);
+  const projection = useMemo(() => projectLocationSubset(data?.observations ?? empty, quality, JSON.parse(excludedKey) as ObservationId[]), [data,quality,excludedKey]);
   const breakBefore = useMemo(() => new Set(projection.breaks.keys()), [projection]);
   const landmarkSession = useMemo(() => createWikimediaSession(), [projection]);
   useEffect(() => {
@@ -121,12 +123,16 @@ export function LocalPreview() {
       current.postMessage({ file, datasetId: `dataset:${crypto.randomUUID()}` } satisfies ImportRequest);
     } catch { stop(); setResult({ ok: false, code: 'FILE_READ_FAILED' }); }
   };
-  const changeQuality = (change: () => void) => {
-    landmarkSession.dispose(); resetSelection(); setViewMode('raw'); change();
+  const changeQuality = (nextHide: boolean, nextRestored: ReadonlySet<ObservationId>) => {
+    if (JSON.stringify(excludedLocationIds(quality,nextHide,nextRestored)) !== excludedKey) {
+      landmarkSession.dispose(); resetSelection(); setViewMode('raw');
+    }
+    setHideSuspects(nextHide); setRestored(nextRestored);
   };
-  const restore = (id: ObservationId) => changeQuality(() => setRestored(previous => {
-    const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next;
-  }));
+  const restore = (id: ObservationId) => {
+    const next = new Set(restored); if (next.has(id)) next.delete(id); else next.add(id);
+    changeQuality(hideSuspects,next);
+  };
   return <main className="map-app">
     <GlobeBoundary resetKey={data?.datasetId ?? 'empty'}><Suspense fallback={<p className="map-message">지도를 준비하고 있습니다…</p>}><MapTilerGlobe points={viewMode === 'raw' ? projection.points : summaryPoints} connections={viewMode === 'raw' ? projection.connections : empty} summary={viewMode === 'mapped' ? placeSummary : null} groups={viewMode === 'mapped' ? mappedGroups : empty}
       originalPoints={data?.observations ?? empty} landmarkSession={landmarkSession}
@@ -143,7 +149,7 @@ export function LocalPreview() {
         <div className="timezone-switch" role="group" aria-label="경로 보기"><button disabled={!data} aria-pressed={viewMode === 'raw'} onClick={() => { resetSelection(); setViewMode('raw'); }}>원본 경로</button><button disabled={!landmarkSession.mappingComplete(groups)} title={landmarkSession.mappingComplete(groups) ? '묶인 기록과 주변 장소 보기' : '장소·사진 매핑이 완료되면 사용할 수 있습니다'} aria-pressed={viewMode === 'mapped'} onClick={() => { resetSelection(); setViewMode('mapped'); }}>장소별 보기</button></div>
         <button disabled={!data} aria-haspopup="dialog" onClick={() => setPanel('points')}>위치 기록</button>
         <button disabled={!data} aria-haspopup="dialog" onClick={() => setPanel('distribution')}>기록 분포</button>
-        <label className="quality-toggle"><input type="checkbox" disabled={!data} checked={hideSuspects} onChange={event => changeQuality(() => setHideSuspects(event.target.checked))} />오류 의심 지점 숨기기</label>
+        <label className="quality-toggle"><input type="checkbox" disabled={!data} checked={hideSuspects} onChange={event => changeQuality(event.target.checked,restored)} />오류 의심 지점 숨기기</label>
         <button disabled={!data} aria-haspopup="dialog" onClick={() => setPanel('quality')}>위치 검사{data ? ` · 숨김 ${projection.excluded.size}` : ''}</button>
         <MappingProgress groups={groups} session={landmarkSession} onShowPhoto={point => { setViewMode('mapped'); setCandidates(null); selectObservation(point); }} onStop={() => landmarkSession.stopMapping()} />
         <button aria-label="이용 안내" aria-haspopup="dialog" onClick={() => setPanel('info')}>ⓘ</button>

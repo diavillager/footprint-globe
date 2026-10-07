@@ -66,6 +66,14 @@ let stage = 'startup';
       assert.equal(requests,before); await allow(); await mapped.click();
       assert.equal(await page.locator('.landmark-rail li button').count(),3);
       assert.ok(remoteQueries>0);
+      const restoredRequests=requests;
+      for (const checked of [false,true]) {
+        await page.getByRole('checkbox',{name:'오류 의심 지점 숨기기'}).setChecked(checked);
+        assert.equal(await mapped.isDisabled(),false,'fully restored input keeps mapping');
+        assert.equal(await mapped.getAttribute('aria-pressed'),'true');
+        assert.equal(await page.locator('.landmark-rail li button').count(),3);
+      }
+      await page.waitForTimeout(600); assert.equal(requests,restoredRequests);
       await inspect(); await page.getByRole('button',{name:'복원 취소',exact:true}).click(); await close();
       await page.getByRole('button',{name:'위치 기록',exact:true}).click();
       assert.equal(await page.locator('.observation-list li').count(),5,'full original list retained');
@@ -80,6 +88,22 @@ let stage = 'startup';
       assert.equal(await page.getByRole('checkbox',{name:'오류 의심 지점 숨기기'}).isChecked(),true);
       assert.match(await page.locator('.import-status').textContent(),/숨김 1개/);
       await inspect(); assert.match(await page.getByRole('dialog',{name:'위치 검사',exact:true}).textContent(),/개별 복원 0개/);await close();
+      const stationary={rawSignals:timeline.rawSignals.filter((_,index)=>index!==2)};
+      await page.getByLabel('JSON 올리기',{exact:true}).setInputFiles({name:'QUALITY_CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(stationary))});
+      await page.getByRole('dialog',{name:'장소 매핑 안내',exact:true}).waitFor();
+      await allow(); await mapped.click();
+      const stationaryRequests=requests;
+      for (const checked of [false,true]) {
+        await page.getByRole('checkbox',{name:'오류 의심 지점 숨기기'}).setChecked(checked);
+        assert.equal(await mapped.isDisabled(),false,'zero suspects must keep mapped mode enabled');
+        assert.equal(await mapped.getAttribute('aria-pressed'),'true');
+        assert.equal(await page.locator('.landmark-rail li button').count(),1);
+      }
+      await inspect();
+      assert.equal(await page.getByRole('heading',{name:'관측을 선택하세요'}).count(),0);
+      await page.getByText('탐지되지 않은 이유 확인',{exact:true}).click();
+      assert.match(await page.getByRole('dialog',{name:'위치 검사',exact:true}).textContent(),/이탈 시작 후보 0건/);
+      await close(); await page.waitForTimeout(600); assert.equal(requests,stationaryRequests);
       await page.getByRole('button',{name:'지우기',exact:true}).click();
       assert.equal(await page.getByRole('button',{name:/^위치 검사/}).isDisabled(),true);
       assert.equal(await page.evaluate(()=>localStorage.length+sessionStorage.length),0);

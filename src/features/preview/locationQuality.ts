@@ -14,7 +14,19 @@ export interface Suspicion {
   count: number;
   accuracyUsed: boolean;
 }
+export const SCREENING_LABELS = {
+  conflict: '동일 시각 충돌', accuracy: '제공된 정확도 반영 후 거리 부족',
+  entrySpeed: '진입 속도가 300km/h 이하이거나 시간 차가 없음',
+  beforeContext: '이탈 전 100m 이내·1분 이상 관측 부족',
+  returnWindow: '시간·거리 조건에 맞는 복귀 구간 없음',
+  exitSpeed: '복귀 속도가 300km/h 이하이거나 시간 차가 없음',
+  afterContext: '복귀 후 100m 이내·1분 이상 관측 부족',
+} as const;
+export type ScreeningReason = keyof typeof SCREENING_LABELS;
+export interface Screening { candidates: number; detected: number; rejected: Record<ScreeningReason,number> }
 export interface QualityReport {
+  /** Entry candidates, not rejected observations; each has exactly one first failing condition. */
+  screening?: Screening;
   suspects: Map<ObservationId, Suspicion>;
   conflicts: Set<ObservationId>;
 }
@@ -83,17 +95,27 @@ export function inspectLocations(points: readonly Observation[]): QualityReport 
     }
     start=end;
   }
-  for (let i = 1; i + 1 < points.length; i++) {
+  const screening: Screening = { candidates:0, detected:0, rejected:{conflict:0,accuracy:0,entrySpeed:0,beforeContext:0,returnWindow:0,exitSpeed:0,afterContext:0} };
+  for (let i = 1; i < points.length; i++) {
     const before = points[i-1]!, first = points[i]!;
-    if (suspects.has(before.id) || conflicts.has(before.id) || conflicts.has(first.id)
-      || adjustedMeters(before,first) < QUALITY_POLICY.excursionMeters
-      || speed(before,first) <= QUALITY_POLICY.speedKmh || !stable(points,i-1,-1,conflicts)) continue;
+    if (suspects.has(before.id) || meters(before,first) < QUALITY_POLICY.excursionMeters) continue;
+    screening.candidates++;
+    if (conflicts.has(before.id) || conflicts.has(first.id)) { screening.rejected.conflict++; continue; }
+    if (adjustedMeters(before,first) < QUALITY_POLICY.excursionMeters) { screening.rejected.accuracy++; continue; }
+    if (speed(before,first) <= QUALITY_POLICY.speedKmh) { screening.rejected.entrySpeed++; continue; }
+    if (!stable(points,i-1,-1,conflicts)) { screening.rejected.beforeContext++; continue; }
+    let failure: ScreeningReason | null = 'returnWindow';
     for (let j = i + 1; j < points.length; j++) {
       const after = points[j]!, last = points[j-1]!;
       if (after.time.epochMs - before.time.epochMs > QUALITY_POLICY.roundTripMs
-        || last.time.epochMs - first.time.epochMs > QUALITY_POLICY.burstMs || conflicts.has(last.id)) break;
+        || last.time.epochMs - first.time.epochMs > QUALITY_POLICY.burstMs) break;
+      if (conflicts.has(last.id)) { failure='conflict'; break; }
       if (meters(before,after) <= QUALITY_POLICY.returnMeters) {
-        if (!conflicts.has(after.id) && speed(last,after) > QUALITY_POLICY.speedKmh && stable(points,j,1,conflicts)) {
+        if (conflicts.has(after.id)) failure='conflict';
+        else if (speed(last,after) <= QUALITY_POLICY.speedKmh) failure='exitSpeed';
+        else if (!stable(points,j,1,conflicts)) failure='afterContext';
+        else {
+          failure=null; screening.detected++;
           const evidence: Suspicion = {reason:'brief-return', entryKmh:speed(before,first), exitKmh:speed(last,after),
             durationMs:last.time.epochMs-first.time.epochMs, count:j-i,
             accuracyUsed:points.slice(i-1,j+1).some(point => point.accuracyMeters !== undefined)};
@@ -104,15 +126,21 @@ export function inspectLocations(points: readonly Observation[]): QualityReport 
       }
       if (adjustedMeters(before,after) < QUALITY_POLICY.excursionMeters) break;
     }
+    if (failure) screening.rejected[failure]++;
   }
-  return {suspects,conflicts};
+  return {suspects,conflicts,screening};
 }
 
 /** Only original adjacent observations may connect. Filtering can never create a new edge. */
+export function excludedLocationIds(report: QualityReport, hide: boolean, restored: ReadonlySet<ObservationId>): ObservationId[] {
+  return hide ? [...report.suspects.keys()].filter(id => !restored.has(id)) : [];
+}
 export function projectLocations(points: readonly Observation[], report: QualityReport, hide: boolean, restored: ReadonlySet<ObservationId>) {
+  return projectLocationSubset(points, report, excludedLocationIds(report,hide,restored));
+}
+export function projectLocationSubset(points: readonly Observation[], report: QualityReport, excludedIds: readonly ObservationId[]) {
   const visible: Observation[] = [], connections: Connection[] = [], breaks = new Map<ObservationId,BreakReason>();
-  const excluded = new Set<ObservationId>();
-  for (const point of points) if (hide && report.suspects.has(point.id) && !restored.has(point.id)) excluded.add(point.id);
+  const excluded = new Set(excludedIds);
   let previous: Observation | undefined;
   for (let index=0;index<points.length;index++) {
     const point=points[index]!;
