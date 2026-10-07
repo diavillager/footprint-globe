@@ -13,7 +13,7 @@ import type { LandmarkSession } from '../landmarks/session';
 import { DiaryCard, diaryCandidate } from '../landmarks/TravelDiary';
 
 type Props = {
-  groups: readonly ObservationGroup[];
+  groups: readonly ObservationGroup[]; originalPoints: readonly Observation[];
   points: readonly Observation[]; connections: readonly Connection[];
   selectedObservation: Observation | null; focusRevision: number;
   landmarkSession: LandmarkSession;
@@ -92,14 +92,18 @@ export default function MapTilerGlobe(props: Props) {
     if (!ready || !map.current) return;
     (map.current.getSource('observations') as sdk.GeoJSONSource).setData(points);
     (map.current.getSource('connections') as sdk.GeoJSONSource).setData(lines);
-    const first = props.points[0]?.coordinate;
+  }, [ready, points, lines]);
+  // Fit only when the imported dataset changes, not when its display mode changes.
+  useEffect(() => {
+    if (!ready || !map.current) return;
+    const first = props.originalPoints[0]?.coordinate;
     if (first) {
       const bounds = new sdk.LngLatBounds([first.longitude, first.latitude], [first.longitude, first.latitude]);
-      for (const point of props.points) bounds.extend([point.coordinate.longitude, point.coordinate.latitude]);
+      for (const point of props.originalPoints) bounds.extend([point.coordinate.longitude, point.coordinate.latitude]);
       map.current.fitBounds(bounds, { padding: { top: Math.min(320, window.innerHeight * .37), bottom: 60, left: 60, right: 60 }, maxZoom: 15, duration: 0 });
       map.current.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
     }
-  }, [ready, points, lines]);
+  }, [ready, props.originalPoints]);
   useEffect(() => {
     if (!ready || !map.current) return;
     const point = props.selectedObservation;

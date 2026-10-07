@@ -95,7 +95,7 @@ export function LocalPreview() {
   };
   return <main className="map-app">
     <GlobeBoundary resetKey={data?.datasetId ?? 'empty'}><Suspense fallback={<p className="map-message">지도를 준비하고 있습니다…</p>}><MapTilerGlobe points={viewMode === 'raw' ? data?.observations ?? empty : groupedPoints} connections={viewMode === 'raw' ? connections : groupedConnections} groups={viewMode === 'mapped' ? groups : empty}
-      landmarkSession={landmarkSession}
+      originalPoints={data?.observations ?? empty} landmarkSession={landmarkSession}
       selectedObservation={selectedObservation} focusRevision={focusRevision} timezone={timezone}
       onSelect={point => setSelectedId(point.id)}
       onPick={found => { setCandidates(found); setSelectedId(found[0]!.id); }} /></Suspense></GlobeBoundary>
