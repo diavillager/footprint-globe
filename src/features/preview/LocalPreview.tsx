@@ -9,7 +9,6 @@ import { groupObservations } from '../landmarks/groups';
 import { LandmarkSession } from '../landmarks/session';
 import { MappingConsent, MappingProgress, usePlaceMapping } from '../landmarks/TravelDiary';
 import { LandmarkPanel } from '../landmarks/LandmarkPanel';
-import { diaryCandidate } from '../landmarks/TravelDiary';
 import { formatDiaryTime } from './observationTime';
 import { geoapifyKey } from '../../map-config';
 const empty = [] as const;
@@ -32,7 +31,7 @@ class GlobeBoundary extends Component<{ children: ReactNode; resetKey: string },
 function Panel({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { const node = dialog.current!; node.showModal(); return () => node.close(); }, []);
-  return <dialog ref={dialog} className="data-window" aria-label={title} onCancel={onClose} onClick={event => { if (event.target === event.currentTarget) { const rect = event.currentTarget.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onClose(); } }}><div className="window-heading"><h2>{title}</h2><button autoFocus aria-label="창 닫기" onClick={onClose}>×</button></div><div className="window-content">{children}</div></dialog>;
+  return <dialog ref={dialog} className={`data-window${title === '기록 상세' ? ' record-window' : ''}`} aria-label={title} onCancel={onClose} onClick={event => { if (event.target === event.currentTarget) { const rect = event.currentTarget.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onClose(); } }}><div className="window-heading"><h2>{title}</h2><button autoFocus aria-label="창 닫기" onClick={onClose}>×</button></div><div className="window-content">{children}</div></dialog>;
 }
 
 function Histogram({ title, values, edges, labels, unit }: { title: string; values: number[]; edges: number[]; labels: string[]; unit: string }) {
@@ -115,11 +114,11 @@ export function LocalPreview() {
     </div>
     {!panel && selectedObservation && <Panel title="기록 상세" onClose={() => setSelectedId(null)}>
       <div className="record-detail">
-        <h3>{viewMode === 'mapped' && groupsByRepresentative.get(selectedObservation.id) ? diaryCandidate(landmarkSession, groupsByRepresentative.get(selectedObservation.id)!)?.name ?? '기록 지점' : `관측 ${data!.observations.indexOf(selectedObservation) + 1}`}</h3>
+        <h3>{viewMode === 'mapped' && groupsByRepresentative.get(selectedObservation.id) ? `기록 지점 ${groups.findIndex(group => group.representative.id === selectedObservation.id) + 1}` : `관측 ${data!.observations.indexOf(selectedObservation) + 1}`}</h3>
         <p>{formatDiaryTime(selectedObservation.time, timezone)}</p>
         <p>위도 {selectedObservation.coordinate.latitude} · 경도 {selectedObservation.coordinate.longitude}</p>
         {candidates && candidates.length > 1 && <div className="detail-neighbors"><p>겹친 지점 {candidateIndex + 1} / {candidates.length}</p><button disabled={candidateIndex <= 0} onClick={() => setSelectedId(candidates[candidateIndex - 1]!.id)}>이전 지점</button><button disabled={candidateIndex >= candidates.length - 1} onClick={() => setSelectedId(candidates[candidateIndex + 1]!.id)}>다음 지점</button></div>}
-        {viewMode === 'mapped' && groupsByRepresentative.has(selectedObservation.id) && <><p>관측 {groupsByRepresentative.get(selectedObservation.id)!.observationCount}개 · 마지막 관측 {formatDiaryTime(groupsByRepresentative.get(selectedObservation.id)!.end, timezone)}</p><LandmarkPanel group={groupsByRepresentative.get(selectedObservation.id)!} session={landmarkSession} onRevoke={() => { landmarkSession.revoke(); resetSelection(); setViewMode('raw'); }} /></>}
+        {viewMode === 'mapped' && groupsByRepresentative.has(selectedObservation.id) && <><p>관측 {groupsByRepresentative.get(selectedObservation.id)!.observationCount}개 · 마지막 관측 {formatDiaryTime(groupsByRepresentative.get(selectedObservation.id)!.end, timezone)}</p><LandmarkPanel group={groupsByRepresentative.get(selectedObservation.id)!} session={landmarkSession} /></>}
       </div>
     </Panel>}
     {panel && <Panel title={{ points: '위치 기록', distribution: '기록 분포', mapping: '장소 매핑 안내', info: '이용 안내' }[panel]} onClose={() => setPanel(null)}>

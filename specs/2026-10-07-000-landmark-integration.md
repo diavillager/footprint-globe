@@ -204,3 +204,18 @@ MapTiler는 식당·상점·병원·편의점·역과 의미 없는 이름도 �
 
 - 경로 보기 전환에서는 중심·확대 수준·회전·기울기를 유지한다. 전체 범위 맞춤은 새 파일 등록 또는 지도 재생성 때만 수행한다. 진행 원 안의 수치는 % 기호 없이 숫자만 표시하고 선 두께는 6px로 표시한다.
 - 진행 원은 인라인 기준선 여백 없이 툴바 행의 수직 중앙에 배치하여 위아래 간격을 동일하게 유지한다.
+
+
+## 장소 분류·상세창 및 사진 공급 보완 조사
+
+- 진행 숫자는 13px·700 굵기이며 UTC/KST 활성 텍스트와 같은 #126456을 사용한다.
+- Geoapify 공식 분류 계층을 로컬 한국어 사전으로 표시한다. 가장 구체적인 알려진 분류를 우선하고 상위 중복을 제거한다. 예: tourism → tourism.sights → tourism.sights.memorial은 ‘기념물’ 하나로 표시한다. 알려지지 않은 하위 분류는 알려진 상위로, 전혀 모르는 값은 ‘장소’로 표시한다. 원본 응답의 분류는 보존하며 외부 번역 API를 사용하지 않는다. [공식 분류](https://apidocs.geoapify.com/docs/places/)
+- 지도 말풍선의 ‘추정 장소’ 문구 대신 분류를 표시한다. 실제 방문을 확정하지 않는다는 설명은 상세창과 동의 안내에서 유지한다.
+- 상세창은 왼쪽 세로 후보 목록·오른쪽 선택 장소의 이름, 분류, 사진, 거리, 좌표로 구성한다. 최초에는 최근접 후보가 선택되며 다른 후보 선택이 지도 대표 장소를 바꾸지 않는다. 상세창의 철회·결과 삭제 버튼과 요청 집계는 제거한다. 아직 사진을 조회하지 않은 후보는 미조회 상태를 표시하며 대표 장소의 사진을 대신 사용하지 않는다.
+
+사진 조사 결과(새 제공자 연동은 미구현):
+
+1. 현재 구현은 Geoapify 상세의 image/wikimedia_commons 및 Wikidata P18에서 파일을 찾는다. 따라서 ‘없음’은 해당 참조에서 사진을 찾지 못했다는 뜻이며 인터넷 전체에 사진이 없다는 뜻이 아니다. 전체 후보가 아니라 각 지점의 최근접 대표 장소만 자동으로 사진을 조회한다. [Geoapify 상세](https://apidocs.geoapify.com/docs/places/place-details/)
+2. 우선 보완 후보는 연결된 Wikipedia 문서의 PageImages API이다. 문서 제목으로 대표 이미지·썸네일을 조회하고 pilicense=free를 적용할 수 있다. Commons의 저작자·라이선스를 계속 확인해야 하며, 새로운 Wikipedia 요청 대상·동의 안내·CSP 변경을 검토해야 한다. 아직 실제 자료의 사진 공급률 개선은 측정하지 않았다. [PageImages](https://www.mediawiki.org/wiki/Extension:PageImages)
+3. 연결된 문서가 없으면 장소명·좌표 기반 문서 검색을 고려할 수 있지만 같은 이름이나 주변 다른 장소를 자동으로 같은 장소로 취급하면 안 된다. 이름·거리·분류 일치 검증이 필요하고 좌표의 추가 전송 결정이 필요하다. [Geosearch](https://www.mediawiki.org/wiki/API:Geosearch)
+4. Google Places Photos는 검색/상세에서 받은 사진 리소스로 이미지를 조회할 수 있고 저작자 표시가 필요하다. Google 장소 ID 매칭과 키·과금 설정이 필요하다. Google 정책은 지도 위 Places 결과를 Google 지도에 표시하도록 요구하므로 현 MapTiler 말풍선에 바로 추가하는 방식으로 진행하지 않는다. [사진 API](https://developers.google.com/maps/documentation/places/web-service/place-photos), [표시 정책](https://developers.google.com/maps/documentation/places/web-service/policies)

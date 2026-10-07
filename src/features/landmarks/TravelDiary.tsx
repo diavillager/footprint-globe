@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } fr
 import type { Observation } from '../../domain/timeline';
 import type { ObservationGroup } from './groups';
 import { LandmarkSession, startMapping } from './session';
+import { categoryLabel } from './categories';
 import { LandmarkPhoto } from './LandmarkPhoto';
 import { formatDiaryTime, type DisplayTimezone } from '../preview/observationTime';
 export function diaryCandidate(session: LandmarkSession, group: ObservationGroup) {
@@ -17,7 +18,7 @@ export function DiaryCard({ group, index, session, timezone, onSelect }: { group
   return <article className="diary-card">
     <button className="diary-card-hit" aria-label={`${index + 1}. ${label} 상세 보기`} onClick={event => { event.stopPropagation(); onSelect(group.representative); }}>
       <span className="diary-card-photo">{session.image(candidate.providerPlaceId) ? <LandmarkPhoto id={candidate.providerPlaceId} session={session} compact /> : <span className="photo-placeholder">사진 없음</span>}</span>
-      <span className="diary-card-copy"><span className="diary-number">{index + 1}</span><strong>{label}</strong><small>{formatDiaryTime(group.start, timezone)}</small><small>추정 장소</small></span>
+      <span className="diary-card-copy"><span className="diary-number">{index + 1}</span><strong>{label}</strong><small>{formatDiaryTime(group.start, timezone)}</small><small className="place-category">{categoryLabel(candidate.categories)}</small></span>
     </button>
     {media && <a className="diary-attribution" href={media.source} target="_blank" rel="noreferrer">사진 출처{media.author ? ` · ${media.author}` : ''}{media.license ? ` · ${media.license}` : ''}</a>}
   </article>;
