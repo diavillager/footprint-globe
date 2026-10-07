@@ -227,3 +227,20 @@ it('병행 중인 모든 요청을 철회하고 늦은 응답을 버린다', asy
   finishes.forEach(finish => finish()); await Promise.all(pending);
   expect(session.state(group().groupId).status).toBe('idle');
 });
+
+it('장소와 사진이 모두 처리되어야 장소별 보기를 허용한다', async () => {
+  let finish!: (value: null) => void;
+  const session = new LandmarkSession('key', vi.fn().mockResolvedValue(candidates), () => new Promise<null>(resolve => { finish = resolve; }));
+  const groups = [group()];
+  expect(session.mappingComplete(groups)).toBe(false);
+  session.allow();
+  expect(session.mappingComplete(groups)).toBe(false);
+  await session.query(groups[0]!);
+  expect(session.mappingComplete(groups)).toBe(false);
+  const photo = session.queryImage('one');
+  expect(session.mappingComplete(groups)).toBe(false);
+  finish(null); await photo;
+  expect(session.mappingComplete(groups)).toBe(true);
+  session.revoke();
+  expect(session.mappingComplete(groups)).toBe(false);
+});

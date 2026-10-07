@@ -27,7 +27,7 @@ export function usePlaceMapping(groups: readonly ObservationGroup[], session: La
   useEffect(() => startMapping(groups, session), [groups, session, session.consent]);
 }
 export function MappingConsent({ session, onAllow, onDecline }: { session: LandmarkSession; onAllow: () => void; onDecline: () => void }) {
-  return <div className="mapping-consent"><p>이 기록의 지점을 묶고 주변 랜드마크와 사진을 자동으로 연결할까요?</p><p>허용하면 대표 좌표·검색 조건을 Geoapify에 보냅니다. Wikimedia에는 파일명·장소 ID로 사진 정보를 요청합니다. IP·앱 출처가 전달될 수 있으며 JSON 본문·원본 파일명·시각은 보내지 않습니다.</p><p>결과는 이 파일을 연 동안만 유지합니다. 가까운 장소의 추정 정보이며 실제 방문을 확정하지 않습니다. 전체 지점을 조회하며 파일당 요청 횟수 제한은 없습니다.</p><div className="consent-actions"><button onClick={onDecline}>원본만 보기</button><button disabled={!!session.unavailable} onClick={onAllow}>허용하고 장소 매핑</button></div>{session.unavailable && <p>[{session.unavailable}] 장소 조회를 사용할 수 없습니다.</p>}</div>;
+  return <div className="mapping-consent"><p>이 기록의 지점을 묶고 주변 랜드마크와 사진을 자동으로 연결할까요?</p><p>허용하면 대표 좌표·검색 조건을 Geoapify에 보냅니다. Wikimedia에는 파일명·장소 ID로 사진 정보를 요청합니다. IP·앱 출처가 전달될 수 있으며 JSON 본문·원본 파일명·시각은 보내지 않습니다.</p><p>결과는 이 파일을 연 동안만 유지합니다. 가까운 장소의 추정 정보이며 실제 방문을 확정하지 않습니다. 전체 지점을 조회하며 파일당 요청 횟수 제한은 없습니다.</p><p>원본 경로를 보면서 조회합니다. 장소·사진 처리가 모두 끝나면 ‘장소별 보기’를 선택할 수 있습니다.</p><div className="consent-actions"><button onClick={onDecline}>원본만 보기</button><button disabled={!!session.unavailable} onClick={onAllow}>허용하고 장소 매핑</button></div>{session.unavailable && <p>[{session.unavailable}] 장소 조회를 사용할 수 없습니다.</p>}</div>;
 }
 export function MappingProgress({ groups, session, onShowPhoto, selectedId, onStop }: { groups: readonly ObservationGroup[]; session: LandmarkSession; onShowPhoto: (point: Observation) => void; selectedId: Observation['id'] | null; onStop: () => void }) {
   useSyncExternalStore(session.subscribe, session.snapshot);
@@ -67,7 +67,7 @@ export function MappingProgress({ groups, session, onShowPhoto, selectedId, onSt
       <span role="progressbar" aria-label={stage} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-valuetext={`${stage} ${percent}%`}><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="16" /><circle className="progress-value" cx="20" cy="20" r="16" pathLength="100" strokeDasharray={`${percent} 100`} /></svg><span>{percent}</span></span>
     </button>
     {open && <div className="mapping-progress-detail" style={position} role="region" aria-label="매핑 진행 세부사항"><strong>{stage}</strong><p>조회 처리 {processed}/{groups.length}개</p><p>장소 · 성공 {success} · 실패 {failure} · 없음 {empty}</p><p>사진 · 성공 {images.ready + images.loaded} · 실패 {images.error + images['load-error'] + images.unsupported + images.cancelled} · 없음 {images.missing}</p><small>사진 성공은 이미지 주소 확보 기준 · 중복 장소 제외<br />요청 {session.attempts}회 (Wikimedia {session.mediaRequests}회)</small>
-      {photoGroups.length > 0 && <button onClick={() => { const next = (photoGroups.findIndex(group => group.representative.id === selectedId) + 1) % photoGroups.length; onShowPhoto(photoGroups[next]!.representative); setOpen(false); }}>사진 있는 장소 보기 ({photoGroups.length}곳)</button>}
+      {photoGroups.length > 0 && <button disabled={!session.mappingComplete(groups)} onClick={() => { const next = (photoGroups.findIndex(group => group.representative.id === selectedId) + 1) % photoGroups.length; onShowPhoto(photoGroups[next]!.representative); setOpen(false); }}>사진 있는 장소 보기 ({photoGroups.length}곳)</button>}
       {session.consent && <button onClick={onStop}>매핑 중지·결과 지우기</button>}
     </div>}
   </div>;

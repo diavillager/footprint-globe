@@ -67,7 +67,18 @@ let stage = 'startup';
     assert.equal(await page.locator('.diary-card').count(), 0);
     await page.getByRole('dialog', { name: '장소 매핑 안내', exact: true }).waitFor();
    };
-   const consent = async () => { await page.getByRole('button', { name: '허용하고 장소 매핑', exact: true }).click(); };
+   const consent = async () => {
+    const mapped = page.getByRole('button', {name:'장소별 보기',exact:true});
+    assert.equal(await mapped.isDisabled(), true);
+    await page.getByRole('button', { name: '허용하고 장소 매핑', exact: true }).click();
+    assert.equal(await page.getByRole('button', {name:'원본 경로',exact:true}).getAttribute('aria-pressed'), 'true');
+    assert.equal(await mapped.isDisabled(), true);
+    if (!['auth','rate','offline','hold'].includes(mode)) {
+     await page.waitForFunction(() => ![...document.querySelectorAll('button')].find(button => button.textContent === '장소별 보기').disabled);
+     assert.equal(await page.getByRole('button', {name:'원본 경로',exact:true}).getAttribute('aria-pressed'), 'true');
+     await mapped.click();
+    }
+   };
    for (const trip of trips) {
     const before = requests;
     await load({ rawSignals: buildTrip(trip.id).timeline.rawSignals.slice(0, 8) });
@@ -87,7 +98,7 @@ let stage = 'startup';
     await page.getByRole('button', { name: '창 닫기', exact: true }).click();
     await page.getByRole('button', {name:'원본 경로',exact:true}).click();
     assert.equal(await page.locator('.diary-card').count(), 0);
-    await page.getByRole('button', {name:'랜드마크',exact:true}).click();
+    await page.getByRole('button', {name:'장소별 보기',exact:true}).click();
     await page.locator('.diary-balloon:visible .diary-card').first().waitFor();
     await page.getByRole('button', { name: '지우기', exact: true }).click();
     const stopped = requests; await page.waitForTimeout(400); assert.equal(requests, stopped);
@@ -134,7 +145,7 @@ let stage = 'startup';
    await page.getByRole('button', {name:'원본 경로',exact:true}).click();
    await page.waitForTimeout(500);
    assert.ok((await cameraShot()).equals(cameraBefore), 'raw mode preserves the camera');
-   await page.getByRole('button', {name:'랜드마크',exact:true}).click();
+   await page.getByRole('button', {name:'장소별 보기',exact:true}).click();
    await page.waitForTimeout(500);
    assert.ok((await cameraShot()).equals(cameraBefore), 'mapped mode preserves the camera');
    assert.doesNotMatch(await page.getByRole('progressbar').textContent(), /%/);

@@ -47,6 +47,16 @@ export class LandmarkSession {
   }
   hasImageAttempt(id: string) { return this.imageAttempts.has(id); }
   selection(groupId: string) { return this.selections.get(groupId) ?? null; }
+  mappingComplete(groups: readonly ObservationGroup[]) {
+    return this.consent && !this.unavailable && !this.busy && groups.length > 0 && groups.every(group => {
+      const state = this.state(group.groupId);
+      if (state.status === 'empty' || state.status === 'error') return true;
+      if (state.status !== 'success') return false;
+      const id = state.candidates[0]?.providerPlaceId;
+      const photo = id ? this.imageStatus(id) : undefined;
+      return !id || (photo !== undefined && photo !== 'loading');
+    });
+  }
   get busy() { return this.active.size > 0; }
   get capacity() { return this.active.size < 3; }
   get unavailable(): LandmarkError | null { return !this.key.trim() ? 'CONFIGURATION' : this.blocked; }
