@@ -8,10 +8,14 @@ import type { Connection } from './analysis';
 import { formatObservationTime, type DisplayTimezone } from './observationTime';
 import { mapTilerKey } from '../../map-config';
 import { mapConnections, mapPoints } from './mapData';
+import type { ObservationGroup } from '../landmarks/groups';
+import type { LandmarkSession } from '../landmarks/session';
+import { LandmarkPanel } from '../landmarks/LandmarkPanel';
 
 type Props = {
   points: readonly Observation[]; connections: readonly Connection[];
   selectedObservation: Observation | null; focusRevision: number;
+  selectedGroup: ObservationGroup | null; landmarkSession: LandmarkSession;
   timezone: DisplayTimezone; candidates: readonly Observation[] | null;
   onPick: (points: Observation[]) => void; onSelect: (point: Observation) => void; onClose: () => void;
 };
@@ -99,18 +103,40 @@ export default function MapTilerGlobe(props: Props) {
     const balloon = new sdk.Popup({ closeButton: false, closeOnClick: false, maxWidth: '300px', offset: 8, className: 'observation-popup', focusAfterOpen: false })
       .setLngLat([point.coordinate.longitude, point.coordinate.latitude]).setDOMContent(popupHost).addTo(map.current);
     popup.current = balloon;
-    return () => { balloon.remove(); if (popup.current === balloon) popup.current = null; };
+    // Candidate responses change the popup size after creation. Recompute its edge anchor.
+    let frame = 0;
+    const fitPopup = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (!map.current || !container.current) return;
+        balloon.setLngLat([point.coordinate.longitude, point.coordinate.latitude]);
+        const bounds = balloon.getElement().getBoundingClientRect();
+        const canvas = container.current.getBoundingClientRect();
+        const controls = container.current.closest('main')?.querySelector('.top-controls')?.getBoundingClientRect();
+        const safeTop = Math.max(canvas.top + 8, (controls?.bottom ?? canvas.top) + 8);
+        const dy = bounds.top < safeTop ? bounds.top - safeTop : Math.max(0, bounds.bottom - canvas.bottom + 8);
+        if (Math.abs(dy) > 1) map.current.panBy([0, dy], { duration: 0 });
+      });
+    };
+    const resize = new ResizeObserver(fitPopup);
+    resize.observe(popupHost);
+    resize.observe(container.current!);
+    fitPopup();
+    return () => { cancelAnimationFrame(frame); resize.disconnect(); balloon.remove(); if (popup.current === balloon) popup.current = null; };
   }, [ready, props.selectedObservation, popupHost]);
   const selected = props.selectedObservation;
   const candidates = props.candidates ?? [];
   const candidateIndex = selected ? candidates.findIndex(point => point.id === selected.id) : -1;
+  const targetLabel = props.selectedGroup ? '묶음' : '관측';
   return <div className="map-surface">
     {selected && createPortal(<div role="dialog" aria-label="관측포인트 상세 정보">
       <button className="popup-close" aria-label="상세 정보 닫기" onClick={props.onClose}>×</button>
-      <h3>관측 {props.points.indexOf(selected) + 1}</h3>
+      <h3>{props.selectedGroup ? `관측 묶음 · ${props.selectedGroup.observationCount.toLocaleString()}개` : `관측 ${props.points.indexOf(selected) + 1}`}</h3>
       <p>{formatObservationTime(selected.time, props.timezone)}</p>
+      {props.selectedGroup && <><p>마지막 관측 {formatObservationTime(props.selectedGroup.end, props.timezone)}</p><p>첫 관측이 대표점입니다. 이 시간 범위 내내 머물렀다는 뜻은 아닙니다.</p></>}
       <p>위도 {selected.coordinate.latitude}<br />경도 {selected.coordinate.longitude}</p>
-      {candidates.length > 1 && <div className="popup-candidates"><p>겹친 관측 {candidateIndex + 1} / {candidates.length}</p><button disabled={candidateIndex <= 0} onClick={() => props.onSelect(candidates[candidateIndex - 1]!)}>이전 관측</button><button disabled={candidateIndex >= candidates.length - 1} onClick={() => props.onSelect(candidates[candidateIndex + 1]!)}>다음 관측</button></div>}
+      {candidates.length > 1 && <div className="popup-candidates"><p>겹친 {targetLabel} {candidateIndex + 1} / {candidates.length}</p><button disabled={candidateIndex <= 0} onClick={() => props.onSelect(candidates[candidateIndex - 1]!)}>이전 {targetLabel}</button><button disabled={candidateIndex >= candidates.length - 1} onClick={() => props.onSelect(candidates[candidateIndex + 1]!)}>다음 {targetLabel}</button></div>}
+      {props.selectedGroup && <LandmarkPanel group={props.selectedGroup} session={props.landmarkSession} />}
     </div>, popupHost)}
     {!mapTilerKey ? <p role="alert" className="map-message">지도 키가 없습니다. VITE_MAPTILER_API_KEY를 설정해 주세요. JSON 등록과 목록 확인은 계속 사용할 수 있습니다.</p> : <>
       <div className={ready && !failed ? 'sr-only' : 'map-message'}><p role="status">{failed ? '[MAP_UNAVAILABLE] 일부 지도 자료를 불러오지 못했습니다. 기록 목록은 계속 사용할 수 있습니다.' : ready ? '상세 지도 준비 완료' : '상세 지도를 불러오는 중입니다…'}</p>

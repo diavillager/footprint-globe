@@ -86,3 +86,18 @@ main.map-app { position: fixed; inset: 0; max-width: none; margin: 0; padding: 0
 .data-window .note { color: #526975; }
 .data-window .histogram th, .data-window .histogram td { border-bottom-color: #e0e5e7; }
 .data-window .bar { background: #167567; }
+
+.toolbar button[aria-pressed=true] { background: #e5f2ee; color: #126456; }
+.observation-popup .maplibregl-popup-content { box-sizing: border-box; max-height: min(480px, 40dvh); overflow-y: auto; }
+.observation-popup .popup-close { position: sticky; float: right; top: 0; right: 0; z-index: 1; background: #fff; }
+.landmark-panel { margin-top: 12px; border-top: 1px solid #ccd9dc; padding-top: 10px; font-size: 12px; }
+.landmark-panel h4 { margin: 0 0 8px; font-size: 14px; }
+.landmark-panel button { background: #f2f5f6; color: #19313c; border-color: #bacdd3; padding: 6px 9px; font-size: 12px; }
+.landmark-panel [role=status], .landmark-panel [role=alert] { font-size: 12px; color: #284351; }
+.landmark-panel a { color: #126456; }
+.landmark-candidates { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+.landmark-candidates button { width: 100%; text-align: left; overflow-wrap: anywhere; }
+.landmark-candidates button[aria-pressed=true] { background: #e5f2ee; border-color: #167567; }
+.landmark-candidates span { display: block; }
+.landmark-panel .revoke-consent { margin-top: 10px; }
+.landmark-budget, .landmark-attribution { font-size: 11px; }

@@ -5,6 +5,9 @@ import type { ImportRequest } from './importFile';
 import { connectAll, distribution } from './analysis';
 import { ObservationList } from './ObservationList';
 import type { DisplayTimezone } from './observationTime';
+import { groupObservations } from '../landmarks/groups';
+import { LandmarkSession } from '../landmarks/session';
+import { geoapifyKey } from '../../map-config';
 const emptyPoints: readonly Observation[] = [];
 const MapTilerGlobe = lazy(() => import('./MapTilerGlobe'));
 
@@ -49,11 +52,18 @@ export function LocalPreview() {
   const [selectedId, setSelectedId] = useState<ObservationId | null>(null);
   const [candidates, setCandidates] = useState<Observation[] | null>(null);
   const [focusRevision, setFocusRevision] = useState(0);
+  const [grouped, setGrouped] = useState(false);
   const selectObservation = (point: Observation) => { setSelectedId(point.id); setFocusRevision(value => value + 1); };
   const worker = useRef<Worker | null>(null);
   const stop = () => { worker.current?.terminate(); worker.current = null; setBusy(false); };
   useEffect(() => () => worker.current?.terminate(), []);
   const data = result?.ok ? result.data : null;
+  const landmarkSession = useMemo(() => new LandmarkSession(geoapifyKey), [data?.datasetId]);
+  useEffect(() => () => landmarkSession.dispose(), [landmarkSession]);
+  const groups = useMemo(() => data ? groupObservations(data.datasetId, data.observations) : [], [data]);
+  const groupsByRepresentative = useMemo(() => new Map(groups.map(group => [group.representative.id, group])), [groups]);
+  const groupedPoints = useMemo(() => groups.map(group => group.representative), [groups]);
+  const groupedConnections = useMemo(() => connectAll(groupedPoints), [groupedPoints]);
   const selectedObservation = data?.observations.find(point => point.id === selectedId) ?? null;
   const resetSelection = () => { setSelectedId(null); setCandidates(null); };
   const connections = useMemo(() => connectAll(data?.observations ?? []), [data]);
@@ -61,7 +71,7 @@ export function LocalPreview() {
   const distances = useMemo(() => connections.map(l => l.km), [connections]);
   const load = (file: File | undefined) => {
     if (!file) return;
-    stop(); resetSelection(); setResult(null); setPanel(null);
+    stop(); landmarkSession.dispose(); resetSelection(); setResult(null); setPanel(null);
     if (file.size > PREVIEW_LIMITS.bytes) { setResult({ ok: false, code: 'INPUT_LIMIT' }); return; }
     setBusy(true);
     try {
@@ -77,7 +87,8 @@ export function LocalPreview() {
     } catch { stop(); setResult({ ok: false, code: 'FILE_READ_FAILED' }); }
   };
   return <main className="map-app">
-    <GlobeBoundary resetKey={data?.datasetId ?? 'empty'}><Suspense fallback={<p className="map-message">지도를 준비하고 있습니다…</p>}><MapTilerGlobe points={data?.observations ?? emptyPoints} connections={connections}
+    <GlobeBoundary resetKey={data?.datasetId ?? 'empty'}><Suspense fallback={<p className="map-message">지도를 준비하고 있습니다…</p>}><MapTilerGlobe points={grouped ? groupedPoints : data?.observations ?? emptyPoints} connections={grouped ? groupedConnections : connections}
+      selectedGroup={grouped && selectedId ? groupsByRepresentative.get(selectedId) ?? null : null} landmarkSession={landmarkSession}
       selectedObservation={selectedObservation} focusRevision={focusRevision} timezone={timezone} candidates={candidates}
       onSelect={point => setSelectedId(point.id)} onClose={() => setSelectedId(null)}
       onPick={found => { setCandidates(found); setSelectedId(found[0]!.id); }} /></Suspense></GlobeBoundary>
@@ -85,20 +96,22 @@ export function LocalPreview() {
       <nav className="toolbar" aria-label="발자취 도구">
         <span className="brand">FOOTPRINT</span>
         <label className="file-button">JSON 올리기<input aria-label="JSON 올리기" type="file" accept=".json,application/json" onChange={e => { const file = e.currentTarget.files?.[0]; e.currentTarget.value = ''; load(file); }} /></label>
-        <button onClick={() => { stop(); resetSelection(); setResult(null); setPanel(null); }} disabled={!result && !busy}>{busy ? '처리 취소' : '지우기'}</button>
+        <button onClick={() => { stop(); landmarkSession.dispose(); resetSelection(); setResult(null); setPanel(null); }} disabled={!result && !busy}>{busy ? '처리 취소' : '지우기'}</button>
         <div className="timezone-switch" role="group" aria-label="표시 시간대"><button aria-pressed={timezone === 'UTC'} onClick={() => setTimezone('UTC')}>UTC</button><button aria-pressed={timezone === 'Asia/Seoul'} onClick={() => setTimezone('Asia/Seoul')}>KST</button></div>
         <button disabled={!data} aria-haspopup="dialog" onClick={() => setPanel('points')}>포인트 목록</button>
         <button disabled={!data} aria-haspopup="dialog" onClick={() => setPanel('time')}>시간별 분포</button>
         <button disabled={!data} aria-haspopup="dialog" onClick={() => setPanel('distance')}>거리별 분포</button>
+        <button disabled={!data} aria-pressed={grouped} onClick={() => { landmarkSession.cancel(); resetSelection(); setGrouped(value => !value); }}>근접 관측 묶기</button>
         <button aria-label="이용 안내" aria-haspopup="dialog" onClick={() => setPanel('info')}>ⓘ</button>
       </nav>
-      <div className="import-status" role="status" aria-live="polite">{busy ? '로컬에서 위치·시각을 검사하고 정렬하는 중입니다…' : !result ? 'JSON을 올려 발자취를 확인하세요.' : result.ok ? '관측 ' + result.counts.accepted.toLocaleString() + '개 · 연결 ' + connections.length.toLocaleString() + '개' : '[' + result.code + '] ' + errors[result.code]}</div>
+      <div className="import-status" role="status" aria-live="polite">{busy ? '로컬에서 위치·시각을 검사하고 정렬하는 중입니다…' : !result ? 'JSON을 올려 발자취를 확인하세요.' : result.ok ? '관측 ' + result.counts.accepted.toLocaleString() + '개 · 연결 ' + connections.length.toLocaleString() + '개' + (grouped ? ' · 표시 묶음 ' + groups.length.toLocaleString() + '개 (100m·120분)' : '') : '[' + result.code + '] ' + errors[result.code]}</div>
     </div>
     {panel && <Panel title={{ points: '포인트 목록', time: '시간별 분포', distance: '거리별 분포', info: '이용 안내' }[panel]} onClose={() => setPanel(null)}>
-      {panel === 'points' && data && <ObservationList points={data.observations} selectedId={selectedId} timezone={timezone} onSelect={point => { setCandidates(null); selectObservation(point); setPanel(null); }} />}
+      {panel === 'points' && data && <ObservationList points={data.observations} selectedId={selectedId} timezone={timezone} onSelect={point => { landmarkSession.cancel(); setGrouped(false); setCandidates(null); selectObservation(point); setPanel(null); }} />}
       {panel === 'time' && <Histogram title="시간차 분포" values={times} edges={timeEdges} labels={timeLabels} unit="분" />}
       {panel === 'distance' && <><Histogram title="거리 분포" values={distances} edges={distanceEdges} labels={distanceLabels} unit="km" /><p>이웃 관측 사이의 지표면 최단 거리이며 실제 이동 거리나 도로 길이가 아닙니다.</p></>}
       {panel === 'info' && <><p>JSON은 이 탭에서만 처리하며 전송·저장하지 않습니다. rawSignals 형식, 최대 64 MiB·100,000개 신호를 지원합니다.</p><p>MapTiler 지도 요청으로 IP 주소와 열람 지역·확대 수준이 서비스에 전달될 수 있습니다. JSON 본문·파일명·관측 시각은 전송하지 않습니다.</p><p>연결선은 기록 지점 사이의 흐름이며 실제 이동 경로가 아닙니다. 지우기·새로고침·탭 종료 시 기록은 유지되지 않습니다.</p>{result?.counts && <p>입력 신호 {result.counts.input.toLocaleString()}개 · 위치 외 신호 제외 {result.counts.ignoredSignals.toLocaleString()}개 · 잘못된 위치 제외 {result.counts.invalidPositions.toLocaleString()}개. 제외된 기록 앞뒤의 유효 위치가 연결됩니다.</p>}</>}
+      {panel === 'info' && <><p>근접 관측 묶기는 첫 관측에서 100m 이내이고 인접 시각 차이가 120분 이하인 연속 관측을 묶습니다. 첫 관측을 대표점으로 사용하며 시간 범위는 확정 체류 시간이 아닙니다. 원본 목록·분포는 유지합니다. 목록에서 개별 관측을 선택하면 묶기가 해제됩니다.</p><p>묶음을 누른 뒤 좌표 조회에 동의하고 주변 후보 조회를 눌러야 Geoapify로 대표 좌표·검색 조건을 보냅니다. IP·앱 출처도 전달될 수 있습니다. 현재 명소 정보이며 실제 방문이나 과거의 명소를 확정하지 않습니다. 동시 1건·파일당 32회·10초 제한이며 자동 재시도하지 않습니다. 동의 철회는 진행 요청을 취소하고 결과를 지우지만 이미 전송한 요청을 회수하지는 못합니다.</p></>}
     </Panel>}
   </main>;
 }
