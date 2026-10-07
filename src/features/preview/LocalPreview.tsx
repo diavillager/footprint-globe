@@ -7,7 +7,7 @@ import { ObservationList } from './ObservationList';
 import type { DisplayTimezone } from './observationTime';
 import { groupObservations } from '../landmarks/groups';
 import { LandmarkSession } from '../landmarks/session';
-import { TravelDiary } from '../landmarks/TravelDiary';
+import { PlaceMappingPanel, usePlaceMapping } from '../landmarks/TravelDiary';
 import { geoapifyKey } from '../../map-config';
 const MapTilerGlobe = lazy(() => import('./MapTilerGlobe'));
 
@@ -48,7 +48,8 @@ export function LocalPreview() {
   const [result, setResult] = useState<ParseResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [timezone, setTimezone] = useState<DisplayTimezone>('UTC');
-  const [panel, setPanel] = useState<'points' | 'time' | 'distance' | 'info' | null>(null);
+  const [panel, setPanel] = useState<'points' | 'distribution' | 'mapping' | 'info' | null>(null);
+  const [distributionMode, setDistributionMode] = useState<'time' | 'distance'>('time');
   const [selectedId, setSelectedId] = useState<ObservationId | null>(null);
   const [candidates, setCandidates] = useState<Observation[] | null>(null);
   const [focusRevision, setFocusRevision] = useState(0);
@@ -60,6 +61,7 @@ export function LocalPreview() {
   const landmarkSession = useMemo(() => new LandmarkSession(geoapifyKey), [data?.datasetId]);
   useEffect(() => () => landmarkSession.dispose(), [landmarkSession]);
   const groups = useMemo(() => data ? groupObservations(data.datasetId, data.observations) : [], [data]);
+  usePlaceMapping(groups, landmarkSession);
   const groupsByRepresentative = useMemo(() => new Map(groups.map(group => [group.representative.id, group])), [groups]);
   const groupedPoints = useMemo(() => groups.map(group => group.representative), [groups]);
   const groupedConnections = useMemo(() => connectAll(groupedPoints), [groupedPoints]);
@@ -97,18 +99,19 @@ export function LocalPreview() {
         <label className="file-button">JSON 올리기<input aria-label="JSON 올리기" type="file" accept=".json,application/json" onChange={e => { const file = e.currentTarget.files?.[0]; e.currentTarget.value = ''; load(file); }} /></label>
         <button onClick={() => { stop(); landmarkSession.dispose(); resetSelection(); setResult(null); setPanel(null); }} disabled={!result && !busy}>{busy ? '처리 취소' : '지우기'}</button>
         <div className="timezone-switch" role="group" aria-label="표시 시간대"><button aria-pressed={timezone === 'UTC'} onClick={() => setTimezone('UTC')}>UTC</button><button aria-pressed={timezone === 'Asia/Seoul'} onClick={() => setTimezone('Asia/Seoul')}>KST</button></div>
-        <button disabled={!data} aria-haspopup="dialog" onClick={() => setPanel('points')}>포인트 목록</button>
-        <button disabled={!data} aria-haspopup="dialog" onClick={() => setPanel('time')}>시간별 분포</button>
-        <button disabled={!data} aria-haspopup="dialog" onClick={() => setPanel('distance')}>거리별 분포</button>
+        <button disabled={!data} aria-haspopup="dialog" onClick={() => setPanel('points')}>위치 기록</button>
+        <button disabled={!data} aria-haspopup="dialog" onClick={() => setPanel('distribution')}>기록 분포</button>
+        <button disabled={!data} aria-haspopup="dialog" onClick={() => setPanel('mapping')}>장소 매핑</button>
         <button aria-label="이용 안내" aria-haspopup="dialog" onClick={() => setPanel('info')}>ⓘ</button>
       </nav>
       <div className="import-status" role="status" aria-live="polite">{busy ? '로컬에서 위치·시각을 검사하고 정렬하는 중입니다…' : !result ? 'JSON을 올려 발자취를 확인하세요.' : result.ok ? '관측 ' + result.counts.accepted.toLocaleString() + '개 · 연결 ' + connections.length.toLocaleString() + '개' + (' · 여행 지점 ' + groups.length.toLocaleString() + '개') : '[' + result.code + '] ' + errors[result.code]}</div>
     </div>
-    <TravelDiary groups={groups} session={landmarkSession} timezone={timezone} onSelect={selectObservation} />
-    {panel && <Panel title={{ points: '포인트 목록', time: '시간별 분포', distance: '거리별 분포', info: '이용 안내' }[panel]} onClose={() => setPanel(null)}>
+    {panel && <Panel title={{ points: '위치 기록', distribution: '기록 분포', mapping: '장소 매핑', info: '이용 안내' }[panel]} onClose={() => setPanel(null)}>
       {panel === 'points' && data && <ObservationList points={data.observations} selectedId={selectedId} timezone={timezone} onSelect={point => { setCandidates(null); selectObservation(point); setPanel(null); }} />}
-      {panel === 'time' && <Histogram title="시간차 분포" values={times} edges={timeEdges} labels={timeLabels} unit="분" />}
-      {panel === 'distance' && <><Histogram title="거리 분포" values={distances} edges={distanceEdges} labels={distanceLabels} unit="km" /><p>이웃 관측 사이의 지표면 최단 거리이며 실제 이동 거리나 도로 길이가 아닙니다.</p></>}
+      {panel === 'mapping' && <PlaceMappingPanel groups={groups} session={landmarkSession} />}
+      {panel === 'distribution' && <div className="distribution-options" role="group" aria-label="분류 기준"><button aria-pressed={distributionMode === 'time'} onClick={() => setDistributionMode('time')}>시간 간격</button><button aria-pressed={distributionMode === 'distance'} onClick={() => setDistributionMode('distance')}>이동 거리</button></div>}
+      {panel === 'distribution' && distributionMode === 'time' && <Histogram title="시간차 분포" values={times} edges={timeEdges} labels={timeLabels} unit="분" />}
+      {panel === 'distribution' && distributionMode === 'distance' && <><Histogram title="거리 분포" values={distances} edges={distanceEdges} labels={distanceLabels} unit="km" /><p>이웃 관측 사이의 지표면 최단 거리이며 실제 이동 거리나 도로 길이가 아닙니다.</p></>}
       {panel === 'info' && <><p>JSON은 이 탭에서만 처리하며 전송·저장하지 않습니다. rawSignals 형식, 최대 64 MiB·100,000개 신호를 지원합니다.</p><p>MapTiler 지도 요청으로 IP 주소와 열람 지역·확대 수준이 서비스에 전달될 수 있습니다. JSON 본문·파일명·관측 시각은 전송하지 않습니다.</p><p>연결선은 기록 지점 사이의 흐름이며 실제 이동 경로가 아닙니다. 지우기·새로고침·탭 종료 시 기록은 유지되지 않습니다.</p>{result?.counts && <p>입력 신호 {result.counts.input.toLocaleString()}개 · 위치 외 신호 제외 {result.counts.ignoredSignals.toLocaleString()}개 · 잘못된 위치 제외 {result.counts.invalidPositions.toLocaleString()}개. 제외된 기록 앞뒤의 유효 위치가 연결됩니다.</p>}</>}
       {panel === 'info' && <><p>JSON 등록 즉시 첫 관측 기준 100m·인접 공백 120분 이내의 기록을 자동으로 묶습니다. 원본 목록·분포는 유지하며 관측 시간 범위는 확정 체류 시간이 아닙니다.</p><p>파일별 동의 후 시간순으로 주변 명소와 사진 정보를 자동 조회합니다. 가장 가까운 후보를 추정 표시하며 실제 방문을 확정하지 않습니다. 동시 1건·파일당 횟수 제한 없음·요청당 10초 제한이며 자동 재시도하지 않습니다. 사용량 제한·인증 오류 때 자동 조회를 중지합니다. 사진은 Geoapify에 연결된 Wikimedia 이미지가 있을 때만 표시합니다. 중지는 요청을 취소하고 결과를 지우지만 이미 전송한 요청을 회수하지 못합니다.</p></>}
 

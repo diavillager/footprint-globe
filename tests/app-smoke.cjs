@@ -36,13 +36,21 @@ let stage = 'startup';
       await page.locator('.import-status').filter({hasText:'10,123'}).waitFor(); console.log(stage, 'imported');
       assert.equal(await page.evaluate(()=>document.documentElement.scrollHeight>innerHeight),false);
       assert.equal(await page.getByRole('button',{name:'합성 예제로 체험'}).count(),0);
-      for(const name of ['포인트 목록','시간별 분포','거리별 분포']) {
+      for(const name of ['위치 기록','기록 분포','장소 매핑']) {
         await page.getByRole('button',{name,exact:true}).click();
         await page.getByRole('dialog',{name,exact:true}).waitFor();
         await page.keyboard.press('Escape');
         assert.equal(await page.locator('dialog[open]').count(),0);
       }
-      await page.getByRole('button',{name:'포인트 목록',exact:true}).click();
+      await page.getByRole('button', {name:'기록 분포',exact:true}).click();
+      await page.getByRole('heading', {name:'시간차 분포',exact:true}).waitFor();
+      await page.getByRole('button', {name:'이동 거리',exact:true}).click();
+      await page.getByRole('heading', {name:'거리 분포',exact:true}).waitFor();
+      assert.equal(await page.getByRole('heading', {name:'시간차 분포',exact:true}).count(),0);
+      await page.getByRole('button', {name:'시간 간격',exact:true}).click();
+      await page.getByRole('heading', {name:'시간차 분포',exact:true}).waitFor();
+      await page.keyboard.press('Escape');
+      await page.getByRole('button',{name:'위치 기록',exact:true}).click();
       assert.equal(await page.locator('.observation-list li').count(),20);
       await page.getByRole('button',{name:'다음 관측 목록',exact:true}).click();
       await page.getByRole('button',{name:/^관측 21 ·/}).waitFor();
@@ -60,7 +68,7 @@ let stage = 'startup';
       await page.getByLabel('JSON 올리기',{exact:true}).setInputFiles({name:'CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({rawSignals:signals.slice(0,3)}))});
       await page.locator('.import-status').filter({hasText:'관측 3개'}).waitFor();
       await page.getByRole('button',{name:'지우기',exact:true}).click();
-      assert.equal(await page.getByRole('button',{name:'포인트 목록',exact:true}).isDisabled(),true);
+      assert.equal(await page.getByRole('button',{name:'위치 기록',exact:true}).isDisabled(),true);
       assert.equal(await page.getByRole('dialog').count(),0);
       assert.equal(errors,0);
       stage += '-display-recovery';

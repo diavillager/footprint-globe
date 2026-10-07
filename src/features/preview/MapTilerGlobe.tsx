@@ -10,7 +10,7 @@ import { mapTilerKey } from '../../map-config';
 import { mapConnections, mapPoints } from './mapData';
 import type { ObservationGroup } from '../landmarks/groups';
 import type { LandmarkSession } from '../landmarks/session';
-import { DiaryCard } from '../landmarks/TravelDiary';
+import { DiaryCard, diaryCandidate } from '../landmarks/TravelDiary';
 import { LandmarkPanel } from '../landmarks/LandmarkPanel';
 
 type Props = {
@@ -99,8 +99,7 @@ export default function MapTilerGlobe(props: Props) {
     if (first) {
       const bounds = new sdk.LngLatBounds([first.longitude, first.latitude], [first.longitude, first.latitude]);
       for (const point of props.points) bounds.extend([point.coordinate.longitude, point.coordinate.latitude]);
-      const mobile = window.innerWidth < 700;
-      map.current.fitBounds(bounds, { padding: { top: Math.min(320, window.innerHeight * .37), bottom: mobile ? 310 : 70, left: mobile ? 40 : 370, right: 100 }, maxZoom: 15, duration: 0 });
+      map.current.fitBounds(bounds, { padding: { top: Math.min(320, window.innerHeight * .37), bottom: 60, left: 60, right: 60 }, maxZoom: 15, duration: 0 });
       map.current.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
     }
   }, [ready, points, lines]);
@@ -145,6 +144,7 @@ export default function MapTilerGlobe(props: Props) {
       const cells = new Map<string, number>();
       const width = instance.getContainer().clientWidth, height = instance.getContainer().clientHeight;
       props.groups.forEach((group, index) => {
+        if (!diaryCandidate(props.landmarkSession, group)) return;
         const point = instance.project([group.representative.coordinate.longitude, group.representative.coordinate.latitude]);
         if (point.x < 0 || point.x > width || point.y < 0 || point.y > height) return;
         const cell = `${Math.floor(point.x / 195)}:${Math.floor(point.y / 145)}`;
@@ -168,11 +168,10 @@ export default function MapTilerGlobe(props: Props) {
     const layout = () => {
       const used: DOMRect[] = [];
       const controls = document.querySelector('.top-controls')?.getBoundingClientRect();
-      const diary = document.querySelector('.travel-diary')?.getBoundingClientRect();
       for (const { host } of diaryHosts) {
         const rect = host.getBoundingClientRect();
         const overlap = (other: DOMRect) => rect.left < other.right + 8 && rect.right + 8 > other.left && rect.top < other.bottom + 8 && rect.bottom + 8 > other.top;
-        const hidden = (controls && overlap(controls)) || (diary && overlap(diary)) || used.some(overlap);
+        const hidden = (controls && overlap(controls)) || used.some(overlap);
         host.style.visibility = hidden ? 'hidden' : 'visible';
         if (!hidden) used.push(rect);
       }
@@ -184,6 +183,7 @@ export default function MapTilerGlobe(props: Props) {
     return () => { instance.off('move', layout); observer.disconnect(); markers.forEach(marker => marker.remove()); };
   }, [ready, diaryHosts]);
   const selected = props.selectedObservation;
+  const representativeLandmark = props.selectedGroup ? diaryCandidate(props.landmarkSession, props.selectedGroup) : null;
   const candidates = props.candidates ?? [];
   const candidateIndex = selected ? candidates.findIndex(point => point.id === selected.id) : -1;
   const targetLabel = props.selectedGroup ? '묶음' : '관측';
@@ -191,7 +191,7 @@ export default function MapTilerGlobe(props: Props) {
     {diaryHosts.map(({ group, host, index }) => createPortal(<DiaryCard group={group} index={index} session={props.landmarkSession} timezone={props.timezone} onSelect={props.onSelect} />, host, group.groupId))}
     {selected && createPortal(<div role="dialog" aria-label="관측포인트 상세 정보">
       <button className="popup-close" aria-label="상세 정보 닫기" onClick={props.onClose}>×</button>
-      <h3>{props.selectedGroup ? `관측 묶음 · ${props.selectedGroup.observationCount.toLocaleString()}개` : `관측 ${props.originalPoints.indexOf(selected) + 1}`}</h3>
+      <h3>{representativeLandmark?.name ?? (props.selectedGroup ? `관측 묶음 · ${props.selectedGroup.observationCount.toLocaleString()}개` : `관측 ${props.originalPoints.indexOf(selected) + 1}`)}</h3>
       <p>{formatObservationTime(selected.time, props.timezone)}</p>
       {props.selectedGroup && <><p>마지막 관측 {formatObservationTime(props.selectedGroup.end, props.timezone)}</p><p>첫 관측이 대표점입니다. 이 시간 범위 내내 머물렀다는 뜻은 아닙니다.</p></>}
       <p>위도 {selected.coordinate.latitude}<br />경도 {selected.coordinate.longitude}</p>

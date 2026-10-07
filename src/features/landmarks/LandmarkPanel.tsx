@@ -17,7 +17,7 @@ export function LandmarkPanel({ group, session }: { group: ObservationGroup; ses
   return <div className="landmark-panel" aria-label="주변 랜드마크">
     <h4>주변 랜드마크 후보</h4>
     <p>현재 관광 명소·볼거리·박물관 정보를 300m 안에서 최대 10개 찾습니다. 가까운 순서이며 방문 여부·당시 존재 여부를 뜻하지 않습니다. 기념비·예술품·계절 행사가 포함될 수 있습니다.</p>
-    {!session.consent ? <p>여행일지 안내에서 동의하면 장소를 자동으로 표시합니다.</p> : <>
+    {!session.consent ? <p>상단 장소 매핑에서 동의하면 장소를 자동으로 표시합니다.</p> : <>
       {state.status === 'loading' && <p role="status">주변 장소를 자동 조회하는 중입니다…</p>}
       {state.status === 'cancelled' && <p role="status">조회가 취소되었습니다.</p>}
       {state.status === 'empty' && <p role="status">표시할 수 있는 주변 후보가 없습니다.</p>}

@@ -39,7 +39,7 @@ let stage = 'startup';
     assert.equal(url.pathname, '/v2/places');
     assert.deepEqual([...url.searchParams.keys()].sort(), ['apiKey', 'bias', 'categories', 'filter', 'lang', 'limit']);
     const coordinates = url.searchParams.get('filter').slice(7).split(',').slice(0, 2).map(Number);
-    return route.fulfill({ json: { features: mode === 'empty' ? [] : [{ properties: { place_id: 'synthetic-one', name: '가상 박물관', categories: ['entertainment.museum'] }, geometry: { type: 'Point', coordinates } }] } });
+    return route.fulfill({ json: { features: mode === 'empty' ? [] : [{ properties: { place_id: 'synthetic-far', name: '더 먼 명소', categories: ['tourism.sights'] }, geometry: { type: 'Point', coordinates: [coordinates[0], coordinates[1] + .001] } }, { properties: { place_id: 'synthetic-one', name: '가상 박물관', categories: ['entertainment.museum'] }, geometry: { type: 'Point', coordinates } }] } });
    });
    const page = await context.newPage(); page.setDefaultTimeout(20000);
    page.on('pageerror', () => errors++);
@@ -49,32 +49,44 @@ let stage = 'startup';
    const load = async timeline => {
     await page.getByLabel('JSON 올리기', { exact: true }).setInputFiles({ name: 'CANARY.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(timeline)) });
     await page.locator('.import-status').filter({ hasText: `관측 ${timeline.rawSignals.length.toLocaleString()}개` }).waitFor();
+    assert.equal(await page.locator('.travel-diary').count(), 0);
+    assert.equal(await page.locator('.diary-card').count(), 0);
+    await page.getByRole('button', { name: '장소 매핑', exact: true }).click();
    };
-   const consent = () => page.getByRole('button', { name: '동의하고 여행 장소 자동 표시', exact: true }).click();
+   const consent = async () => { await page.getByRole('button', { name: '동의하고 여행 장소 자동 표시', exact: true }).click(); await page.keyboard.press('Escape'); };
    for (const trip of trips) {
     const before = requests;
     await load({ rawSignals: buildTrip(trip.id).timeline.rawSignals.slice(0, 8) });
     assert.equal(await page.getByRole('button', { name: '근접 관측 묶기', exact: true }).count(), 0);
     await page.waitForTimeout(400); assert.equal(requests, before);
-    await consent(); await page.locator('.travel-diary .diary-card strong').filter({ hasText: '가상 박물관' }).first().waitFor();
-    await page.locator('.travel-diary .diary-card img').first().waitFor();
+    await consent(); await page.locator('.diary-balloon .diary-card strong').filter({ hasText: '가상 박물관' }).first().waitFor();
+    await page.locator('.diary-balloon .diary-card img').first().waitFor();
     await page.locator('.diary-balloon').first().waitFor({ state: 'attached' });
+    await page.locator('.diary-balloon button').first().click();
+    await page.getByRole('heading', { name: '주변 랜드마크 후보', exact: true }).waitFor();
+    await page.getByRole('button', { name: /더 먼 명소/ }).click();
+    assert.equal(await page.locator('.diary-balloon strong').filter({ hasText: '더 먼 명소' }).count(), 0);
+    assert.ok(await page.locator('.diary-balloon strong').filter({ hasText: '가상 박물관' }).count() > 0);
+    await page.getByRole('button', { name: '상세 정보 닫기', exact: true }).click();
     await page.getByRole('button', { name: '지우기', exact: true }).click();
     const stopped = requests; await page.waitForTimeout(400); assert.equal(requests, stopped);
    }
    const timeline = count => ({ rawSignals: Array.from({ length: count }, (_, i) => ({ position: { LatLng: `${37 + i * .01}°, 127°`, timestamp: new Date(Date.UTC(2040, 0, 1) + i * 60000).toISOString() } })) });
    mode = 'empty'; const before = requests; await load(timeline(35)); await consent();
+   await page.getByRole('button', { name: '장소 매핑', exact: true }).click();
    await page.getByText('35/35개 장소 조회', { exact: false }).waitFor(); assert.equal(requests - before, 35);
-   await page.getByRole('button', { name: '다음', exact: true }).click(); assert.equal(await page.locator('.diary-flow li').count(), 3);
+   assert.equal(await page.locator('.diary-card').count(), 0); await page.keyboard.press('Escape');
    for (const failure of ['auth', 'rate', 'offline']) {
     mode = failure; await load(timeline(2)); const before = requests; await consent();
+    await page.getByRole('button', { name: '장소 매핑', exact: true }).click();
     await page.getByText(failure === 'auth' ? '[AUTH]' : failure === 'rate' ? '[RATE_LIMIT]' : '2/2개 장소 조회', { exact: false }).first().waitFor();
     await page.waitForTimeout(500); assert.equal(requests - before, failure === 'offline' ? 2 : 1);
+    assert.equal(await page.locator('.diary-card').count(), 0); await page.keyboard.press('Escape');
    }
    mode = 'hold'; await load(timeline(2)); await consent(); await page.waitForTimeout(500);
    await page.getByRole('button', { name: '지우기', exact: true }).click(); if (held) await held();
    mode = 'success'; await page.setViewportSize({ width: 390, height: 844 }); await load(timeline(2)); await consent();
-   await page.locator('.travel-diary .diary-card img').first().waitFor();
+   await page.locator('.diary-balloon .diary-card img').first().waitFor();
    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
    await page.screenshot({ path: `node_modules/.cache/diary-${stage}-mobile.png` });
    await page.setViewportSize({ width: 1280, height: 1000 }); await page.waitForTimeout(500);
