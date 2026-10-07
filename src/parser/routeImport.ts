@@ -12,14 +12,15 @@ export function parseGpx(text:string,datasetId:DatasetId):ParseResult {
   if(new TextEncoder().encode(text).length>PREVIEW_LIMITS.bytes) return {ok:false,code:'INPUT_LIMIT'};
   if(text.includes('\u0000')) return {ok:false,code:'UNSUPPORTED_ENCODING'};
   const points:Observation[]=[], counts=emptyCounts();
-  let previous:Observation|undefined, previousNs:bigint|undefined, previousSegment=-1, overLimit=false;
+  let previous:Observation|undefined, previousNs:bigint|undefined, previousTrack:number|undefined, previousSegment=-1, overLimit=false;
   const audit=createGpxAudit(point=>{
     counts.input++;
     if(counts.input>PREVIEW_LIMITS.records) {overLimit=true;return;}
     if(!point.valid || !point.time) {counts.invalidPositions++;previous=undefined;previousNs=undefined;return;}
     const current:Observation={id:`observation:${datasetId}:gpx:${counts.input-1}`,coordinate:point.coordinate,time:point.time.instant,source:'gpx',sourceSegment:`gpx:${point.segment}`,
-      predecessorId:point.kind!=='wpt' && previous && previousSegment===point.segment && previousNs!==undefined && point.time.ns>=previousNs ? previous.id:null};
-    points.push(current);previous=current;previousNs=point.time.ns;previousSegment=point.segment;
+      predecessorId:point.kind!=='wpt' && previous && previousSegment===point.segment && previousNs!==undefined && point.time.ns>=previousNs ? previous.id:null,
+      ...(point.kind==='trkpt' && previous && point.track!==undefined && point.track===previousTrack && previousSegment!==point.segment && previousNs!==undefined && point.time.ns>previousNs ? {gapPredecessorId:previous.id}:{})};
+    points.push(current);previous=current;previousNs=point.time.ns;previousSegment=point.segment;previousTrack=point.track;
   });
   for(let offset=0;offset<text.length && audit.report.status==='scanning' && !overLimit;offset+=65536) audit.write(text.slice(offset,offset+65536),offset+65536>=text.length);
   if(!text.length) audit.write('',true);

@@ -40,3 +40,24 @@ export function summaryLines(summary: PlaceSummary, selected: ObservationId | nu
   });
   return data;
 }
+
+/** Inferred gap geometry is independent of recorded/summary edges and mapping input. */
+export function gapLines(connections: readonly Connection[], summary: PlaceSummary | null, selected: ObservationId | null) {
+  const anchors = new Map<ObservationId, { point: Observation; selected: boolean }>();
+  for (const node of summary ? [...summary.nodes, ...summary.waypoints] : []) {
+    for (const group of node.groups) for (const id of group.sourceObservationIds) {
+      anchors.set(id, { point: node.point, selected: group.representative.id === selected });
+    }
+  }
+  const projected = connections.flatMap(link => {
+    const from = anchors.get(link.from.id), to = anchors.get(link.to.id);
+    if (summary && (!from || !to || from.point.id === to.point.id)) return [];
+    return [{ ...link, from: from?.point ?? link.from, to: to?.point ?? link.to,
+      highlighted: Boolean(summary && (from?.selected || to?.selected)) }];
+  });
+  const data = mapConnections(projected, true, 0);
+  data.features.forEach((feature, index) => {
+    feature.properties = { gap: true, highlighted: projected[index]!.highlighted };
+  });
+  return data;
+}

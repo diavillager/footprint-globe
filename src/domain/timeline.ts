@@ -18,6 +18,8 @@ export interface Observation {
   readonly source?: 'raw' | 'semantic' | 'gpx';
   /** Explicit source continuity; null starts an isolated point or a new run. */
   readonly predecessorId?: ObservationId | null;
+  /** Display-only gap to the previous segment in the same GPX track. Not a recorded edge. */
+  readonly gapPredecessorId?: ObservationId;
   readonly sourceSegment?: string;
 }
 export interface RecordedVisit {

@@ -37,7 +37,7 @@ export function representativeRoute(data:TimelineData,quality:QualityReport,excl
   for(const edge of accepted) {chosen.set(edge.from.id,edge.from);chosen.set(edge.to.id,edge.to);}
   // A semantic-only isolated point is still a record, but never fabricates a path.
   if(!data.observations.length) for(const point of detail.points) chosen.set(point.id,point);
-  const points=[...chosen.values()].sort(compareObservations),connections:Connection[]=[],breaks=new Map<ObservationId,BreakReason>();
+  const points=[...chosen.values()].sort(compareObservations),connections:Connection[]=[],gapConnections:Connection[]=[],breaks=new Map<ObservationId,BreakReason>();
   const excluded=new Set(excludedIds);
   const barriers=allSourcePoints(data).filter(p=>excluded.has(p.id)).map(instant);
   const crossesHidden=(from:Observation,to:Observation)=>{
@@ -58,8 +58,15 @@ export function representativeRoute(data:TimelineData,quality:QualityReport,excl
       const blocked=raw.breaks.has(to.id)||detail.breaks.has(to.id)||crossesHidden(from,to);
       if(!different || blocked || ms<0 || ms>SOURCE_JOIN.milliseconds || km>SOURCE_JOIN.km || (ms===0?km>0:km/(ms/3600000)>SOURCE_JOIN.speedKmh)) reason='source-boundary';
     }
-    if(reason) breaks.set(to.id,reason);
+    if(reason) {
+      breaks.set(to.id,reason);
+      // Gap geometry never participates in recorded edges, grouping or place lookup.
+      if(data.format==='gpx' && (reason==='long-gap'||reason==='source-boundary') && ms>0
+        && (to.predecessorId===from.id || to.gapPredecessorId===from.id)) {
+        gapConnections.push({from,to,seconds:ms/1000,km});
+      }
+    }
     else connections.push({from,to,seconds:Math.max(0,ms/1000),km});
   }
-  return {points,connections,breaks,excluded:new Set(excludedIds),coveredRaw:covered.size,ambiguousEdges:ambiguous.size};
+  return {points,connections,gapConnections,breaks,excluded:new Set(excludedIds),coveredRaw:covered.size,ambiguousEdges:ambiguous.size};
 }

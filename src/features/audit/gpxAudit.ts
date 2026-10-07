@@ -36,8 +36,8 @@ export function emptyGpxAudit():GpxReport {
 const decimal = (value:string) => /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value.trim()) && Number.isFinite(Number(value));
 const attr = (tag:SaxesTagNS, name:string) => Object.values(tag.attributes).find(a=>a.uri==='' && a.local===name)?.value;
 interface Point { kind:PointKind; coordinates:boolean; coordinate:Coordinate; fields:Map<string,{count:number;text:string}> }
-interface Frame { local:string; uri:string; path:string; standard:boolean; context:string; extension:boolean; children:number; text:string; textOverflow:boolean; point?:Point; previous?:bigint; segment:number }
-export interface GpxPointEvent { kind:PointKind; segment:number; coordinate:Coordinate; time:ReturnType<typeof rawTimestamp>; valid:boolean }
+interface Frame { local:string; uri:string; path:string; standard:boolean; context:string; extension:boolean; children:number; text:string; textOverflow:boolean; point?:Point; previous?:bigint; segment:number; track:number|undefined }
+export interface GpxPointEvent { kind:PointKind; segment:number; track:number|undefined; coordinate:Coordinate; time:ReturnType<typeof rawTimestamp>; valid:boolean }
 
 /** Audit callers omit onPoint. The app importer may consume validated values locally, never in reports. */
 export function createGpxAudit(onPoint?:(point:GpxPointEvent)=>void) {
@@ -89,7 +89,7 @@ export function createGpxAudit(onPoint?:(point:GpxPointEvent)=>void) {
     const extension=Boolean(parent?.extension || (correctNamespace && tag.local==='extensions'));
     if(extension) report.extensionElements++;
     const frame:Frame={local:tag.local,uri:tag.uri,path,standard:correctNamespace,context,extension,children:0,text:'',textOverflow:false,
-      segment:['trkseg','rte','wpt'].includes(context)?++segment:(parent?.segment??0)};
+      segment:['trkseg','rte','wpt'].includes(context)?++segment:(parent?.segment??0),track:context==='trk'?report.tracks+1:parent?.track};
     if(parent) parent.children++;
     if(context==='trk') report.tracks++;
     if(context==='rte') report.routes++;
@@ -150,7 +150,7 @@ export function createGpxAudit(onPoint?:(point:GpxPointEvent)=>void) {
       if(valid) stats.valid++;else stats.invalid++;
     }
     if(point.coordinates && time) stats.comparable++;
-    onPoint?.({kind:point.kind,segment:frame.segment,coordinate:point.coordinate,time,valid:point.coordinates && !!time});
+    onPoint?.({kind:point.kind,segment:frame.segment,track:frame.track,coordinate:point.coordinate,time,valid:point.coordinates && !!time});
     if(point.kind==='wpt' || !parent) return;
     if(!point.coordinates || !time) {delete parent.previous;return;}
     if(parent.previous!==undefined) {

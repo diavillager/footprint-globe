@@ -7,7 +7,7 @@ import type { Observation } from '../../domain/timeline';
 import type { Connection } from './analysis';
 import { formatDiaryTime, type DisplayTimezone } from './observationTime';
 import { mapTilerKey } from '../../map-config';
-import { mapConnections, mapPoints, summaryLines } from './mapData';
+import { gapLines, mapConnections, mapPoints, summaryLines } from './mapData';
 import type { ObservationGroup } from '../landmarks/groups';
 import type { LandmarkSession } from '../landmarks/session';
 import type { PlaceSummary } from '../landmarks/placeSummary';
@@ -16,6 +16,7 @@ import { DiaryCard, diaryCandidate } from '../landmarks/TravelDiary';
 type Props = {
   summary: PlaceSummary | null; groups: readonly ObservationGroup[]; originalPoints: readonly Observation[];
   points: readonly Observation[]; connections: readonly Connection[];
+  gapConnections: readonly Connection[];
   selectedObservation: Observation | null; focusRevision: number; focusMode: 'detail' | 'rail';
   landmarkSession: LandmarkSession;
   timezone: DisplayTimezone; showPointPopup: boolean; candidates: readonly Observation[]; onClose: () => void;
@@ -46,6 +47,7 @@ export default function MapTilerGlobe(props: Props) {
   const focusedRevision = useRef(props.focusRevision);
   const points = useMemo(() => mapPoints(props.points), [props.points]);
   const lines = useMemo(() => props.summary ? summaryLines(props.summary,props.selectedObservation?.id ?? null) : mapConnections(props.connections, false, 0), [props.connections,props.summary,props.selectedObservation]);
+  const gaps = useMemo(() => gapLines(props.gapConnections,props.summary,props.selectedObservation?.id ?? null), [props.gapConnections,props.summary,props.selectedObservation]);
   useEffect(() => {
     if (!container.current || !mapTilerKey) return;
     setReady(false); setFailed(false);
@@ -88,9 +90,12 @@ export default function MapTilerGlobe(props: Props) {
         }
         instance.addSource('observations', { type: 'geojson', data: mapPoints(latest.current.points), maxzoom: 20 });
         instance.addSource('connections', { type: 'geojson', data: mapConnections(latest.current.connections, false, 0), maxzoom: 20, tolerance: 0 });
+        instance.addSource('gap-connections', { type: 'geojson', data: gapLines(latest.current.gapConnections,latest.current.summary,null), maxzoom: 20, tolerance: 0 });
         instance.addLayer({ id: 'trace-solid', type: 'line', source: 'connections', filter: ['!=', ['get', 'summary'], true], paint: { 'line-color': '#087e78', 'line-width': 3 } });
         instance.addLayer({ id: 'place-summary', type:'line', source:'connections', filter:['==',['get','summary'],true], paint:{'line-color':'#087e78','line-width':3,'line-opacity':.9} });
+        instance.addLayer({ id: 'trace-gap', type:'line', source:'gap-connections', paint:{'line-color':'#087e78','line-width':3,'line-dasharray':[2,2]} });
         instance.addLayer({ id:'place-summary-selected',type:'line',source:'connections',filter:['==',['get','highlighted'],true],paint:{'line-color':'#c15c15','line-width':4} });
+        instance.addLayer({ id:'trace-gap-selected',type:'line',source:'gap-connections',filter:['==',['get','highlighted'],true],paint:{'line-color':'#c15c15','line-width':4,'line-dasharray':[2,2]} });
         instance.addLayer({ id: 'observations', type: 'circle', source: 'observations', paint: { 'circle-radius': 4, 'circle-color': '#087e78', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1 } });
         instance.addLayer({ id: 'selected', type: 'circle', source: 'observations', filter: ['==', ['get', 'observationId'], ''], paint: { 'circle-radius': 9, 'circle-color': '#ffb74d', 'circle-opacity': .4, 'circle-stroke-color': '#ac4200', 'circle-stroke-width': 3 } });
         instance.on('movestart', event => { if (event.originalEvent) latest.current.onMapInteract(); });
@@ -112,8 +117,10 @@ export default function MapTilerGlobe(props: Props) {
     if (!ready || !map.current) return;
     (map.current.getSource('observations') as sdk.GeoJSONSource).setData(points);
     (map.current.getSource('connections') as sdk.GeoJSONSource).setData(lines);
+    (map.current.getSource('gap-connections') as sdk.GeoJSONSource).setData(gaps);
     map.current.setPaintProperty('place-summary','line-opacity',props.summary && props.selectedObservation ? .5 : .9);
-  }, [ready, points, lines, props.summary, props.selectedObservation]);
+    map.current.setPaintProperty('trace-gap','line-opacity',props.summary ? props.selectedObservation ? .5 : .9 : 1);
+  }, [ready, points, lines, gaps, props.summary, props.selectedObservation]);
   // Fit only when the imported dataset changes, not when its display mode changes.
   useEffect(() => {
     if (!ready || !map.current) return;
@@ -214,7 +221,7 @@ export default function MapTilerGlobe(props: Props) {
   }, [ready, diaryHosts]);
   const selected = props.selectedObservation;
   const selectedIndex = selected ? props.candidates.findIndex(point => point.id === selected.id) : -1;
-  return <div className="map-surface" data-visible-points={props.points.length} data-visible-connections={props.connections.length}>
+  return <div className="map-surface" data-visible-points={props.points.length} data-visible-connections={props.connections.length} data-visible-gaps={gaps.features.length}>
     {selected && props.showPointPopup && createPortal(<div role="dialog" aria-label="포인트 정보" onKeyDown={event => { if (event.key === 'Escape') props.onClose(); }}>
       <button className="popup-close" aria-label="말풍선 닫기" onClick={props.onClose}>×</button>
       <h3>관측 {props.originalPoints.indexOf(selected) + 1}</h3>
