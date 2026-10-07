@@ -185,19 +185,15 @@ main.map-app { position: fixed; inset: 0; max-width: none; margin: 0; padding: 0
 .photo-places ul { list-style: none; padding: 0; margin: 4px 0; }
 .observation-popup [role=dialog] { max-height: 45vh; overflow-y: auto; padding-right: 8px; }
 
-/* A chronological ruler for mapped places; independent of map bearing. */
-.landmark-rail { position: absolute; bottom: 34px; left: 50%; transform: translateX(-50%); z-index: 5; width: min(760px, calc(100vw - 32px)); box-sizing: border-box; padding: 10px 12px 7px; background: #fffffff5; border: 1px solid #dce6e9; border-radius: 16px; color: #19313c; box-shadow: 0 4px 20px #142e3f25; }
-.landmark-rail-heading { display: flex; justify-content: space-between; gap: 16px; font-size: 12px; padding: 0 28px; }
-.landmark-rail-heading strong { flex-shrink: 0; }.landmark-rail-heading strong span { margin-left: 5px; color: #587269; font-weight: 400; }
-.landmark-rail-heading > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #126456; }
-.landmark-rail-row { display: flex; align-items: center; gap: 4px; }
-.landmark-rail-scroll { overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x; scrollbar-width: thin; scrollbar-color: #a1beb4 transparent; min-width: 0; flex: 1; }
-.landmark-rail ol { position: relative; display: flex; width: max-content; min-width: 100%; box-sizing: border-box; gap: 12px; list-style: none; margin: 0; padding: 20px 8px 6px; background: linear-gradient(#9bb8ae,#9bb8ae) left 10px / 100% 1px no-repeat, repeating-linear-gradient(to right, #b1c8bf 0 1px, transparent 1px 14px) 8px 6px / 100% 5px no-repeat; }
-.landmark-rail li { position: relative; flex: 0 0 auto; }.landmark-rail li::before { content: ''; position: absolute; height: 10px; width: 1px; background: #6c998c; top: -10px; left: 50%; }
-.landmark-rail li button { width: 40px; height: 40px; border-radius: 50%; padding: 0; color: #126456; background: #f3f8f5; border: 1px solid #c1d7ce; font-size: 13px; font-weight: 700; }
-.landmark-rail li button[aria-pressed=true] { color: white; background: #126456; border: 2px solid #fff; outline: 2px solid #126456; box-shadow: 0 2px 6px #12645640; }
+/* Mapped-place numbers sit directly on one draggable line. */
+.landmark-rail { position: absolute; bottom: 34px; left: 50%; transform: translateX(-50%); z-index: 5; width: min(760px, calc(100vw - 32px)); }
+.landmark-rail-scroll { overflow-x: auto; overscroll-behavior-x: contain; touch-action: none; scrollbar-width: none; cursor: grab; user-select: none; }
+.landmark-rail-scroll::-webkit-scrollbar { display: none; }
+.landmark-rail-scroll[data-dragging=true], .landmark-rail-scroll[data-dragging=true] button { cursor: grabbing; }
+.landmark-rail ol { display: flex; width: max-content; min-width: 100%; box-sizing: border-box; gap: 24px; list-style: none; margin: 0; padding: 8px; background: linear-gradient(#126456,#126456) center / 100% 2px no-repeat; }
+.landmark-rail li { flex: 0 0 auto; }
+.landmark-rail li button { display: block; width: 40px; height: 40px; border-radius: 50%; padding: 0; color: #126456; background: #f3f8f5; border: 2px solid #126456; font-size: 13px; font-weight: 700; cursor: grab; }
+.landmark-rail li button[aria-pressed=true] { color: white; background: #126456; border: 2px solid #fff; outline: 2px solid #126456; }
 .landmark-rail li button:hover { background: #dceee4; }.landmark-rail li button[aria-pressed=true]:hover { background: #126456; }
-.landmark-rail .rail-arrow { color: #126456; background: transparent; border: 0; padding: 4px; font-size: 26px; line-height: 1; width: 24px; flex-shrink: 0; }
 .record-window[open] { position: fixed; z-index: 4; top: 50%; left: 50%; right: auto; margin: 0; transform: translate(-50%, -50%); max-height: calc(100dvh - 300px); }
 .record-window .window-content { max-height: calc(100dvh - 385px); }
-@media (max-width: 600px) { .landmark-rail { bottom: 34px; padding: 8px 6px 5px; }.landmark-rail-heading { padding: 0 24px; gap: 6px; }.landmark-rail-heading > span { max-width: 46%; } }

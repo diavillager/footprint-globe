@@ -12,6 +12,8 @@ export function LandmarkRail({ stops, selectedId, onSelect }: {
   stops: readonly LandmarkStop[]; selectedId: ObservationId | null; onSelect: (point: Observation) => void;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
+  const drag = useRef<{id: number; x: number; left: number; moved: boolean} | null>(null);
+  const suppressClick = useRef(false);
   const selected = stops.findIndex(stop => stop.group.representative.id === selectedId);
   useLayoutEffect(() => { if (scroll.current) scroll.current.scrollLeft = 0; }, []);
   useEffect(() => {
@@ -35,13 +37,31 @@ export function LandmarkRail({ stops, selectedId, onSelect }: {
   },[selected]);
   if (!stops.length) return null;
   return <nav className="landmark-rail" aria-label="장소 순서">
-    <div className="landmark-rail-heading"><strong>장소 순서 <span>{stops.length}개</span></strong><span>{selected>=0 ? `${selected+1}. ${stops[selected]!.place.name}` : '번호를 눌러 장소 보기'}</span></div>
-    <div className="landmark-rail-row">
-      <button className="rail-arrow" aria-label="이전 번호 보기" onClick={()=>scroll.current?.scrollBy({left:-scroll.current.clientWidth*.7,behavior:'smooth'})}>‹</button>
-      <div ref={scroll} className="landmark-rail-scroll" tabIndex={0} aria-label="장소 번호 가로 스크롤">
-        <ol>{stops.map(({group,place},index)=><li key={group.groupId}><button data-place-id={group.representative.id} aria-label={`${index+1}. ${place.name}`} aria-pressed={selectedId===group.representative.id} title={`${index+1}. ${place.name}`} onClick={()=>onSelect(group.representative)}>{index+1}</button></li>)}</ol>
-      </div>
-      <button className="rail-arrow" aria-label="다음 번호 보기" onClick={()=>scroll.current?.scrollBy({left:scroll.current.clientWidth*.7,behavior:'smooth'})}>›</button>
+    <div ref={scroll} className="landmark-rail-scroll" tabIndex={0} aria-label="장소 번호 가로 스크롤"
+      onPointerDown={event => {
+        if (!event.isPrimary || event.button !== 0) return;
+        suppressClick.current = false;
+        drag.current = {id:event.pointerId, x:event.clientX, left:event.currentTarget.scrollLeft, moved:false};
+      }}
+      onPointerMove={event => {
+        const state = drag.current;
+        if (!state || state.id !== event.pointerId) return;
+        const dx = event.clientX - state.x;
+        if (!state.moved && Math.abs(dx) < 5) return;
+        state.moved = true; suppressClick.current = true;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        event.currentTarget.dataset.dragging = 'true';
+        event.currentTarget.scrollLeft = state.left - dx;
+      }}
+      onPointerUp={event => {
+        if (drag.current?.id !== event.pointerId) return;
+        drag.current = null; delete event.currentTarget.dataset.dragging;
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      }}
+      onPointerCancel={event => { drag.current = null; delete event.currentTarget.dataset.dragging; }}
+      onLostPointerCapture={event => { if (event.target === event.currentTarget) { drag.current = null; delete event.currentTarget.dataset.dragging; } }}
+      onClickCapture={event => { if (suppressClick.current && event.detail !== 0) { event.preventDefault(); event.stopPropagation(); } }}>
+      <ol>{stops.map(({group,place},index)=><li key={group.groupId}><button data-place-id={group.representative.id} aria-label={`${index+1}. ${place.name}`} aria-pressed={selectedId===group.representative.id} title={`${index+1}. ${place.name}`} onClick={()=>onSelect(group.representative)}>{index+1}</button></li>)}</ol>
     </div>
   </nav>;
 }

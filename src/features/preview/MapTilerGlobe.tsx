@@ -15,7 +15,7 @@ import { DiaryCard, diaryCandidate } from '../landmarks/TravelDiary';
 type Props = {
   groups: readonly ObservationGroup[]; originalPoints: readonly Observation[];
   points: readonly Observation[]; connections: readonly Connection[];
-  selectedObservation: Observation | null; focusRevision: number;
+  selectedObservation: Observation | null; focusRevision: number; focusMode: 'detail' | 'rail';
   landmarkSession: LandmarkSession;
   timezone: DisplayTimezone; showPointPopup: boolean; candidates: readonly Observation[]; onClose: () => void;
   onMapInteract: () => void;
@@ -118,9 +118,13 @@ export default function MapTilerGlobe(props: Props) {
     if (!ready || !map.current) return;
     const point = props.selectedObservation;
     map.current.setFilter('selected', ['==', ['get', 'observationId'], point?.id ?? '']);
-    if (point && focusedRevision.current !== props.focusRevision) map.current.jumpTo({ center: [point.coordinate.longitude, point.coordinate.latitude] });
+    if (point && focusedRevision.current !== props.focusRevision) {
+      const center: [number, number] = [point.coordinate.longitude, point.coordinate.latitude];
+      if (props.focusMode === 'rail') map.current.flyTo({ center, zoom: Math.max(16, map.current.getZoom()), duration: 1400 });
+      else map.current.jumpTo({ center });
+    }
     focusedRevision.current = props.focusRevision;
-  }, [ready, props.selectedObservation, props.focusRevision]);
+  }, [ready, props.selectedObservation, props.focusRevision, props.focusMode]);
   useEffect(() => {
     if (!ready || !map.current || !props.selectedObservation || !props.showPointPopup) return;
     const instance = map.current, point = props.selectedObservation;

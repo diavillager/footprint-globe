@@ -56,7 +56,8 @@ export function LocalPreview() {
   const [selectedId, setSelectedId] = useState<ObservationId | null>(null);
   const [candidates, setCandidates] = useState<Observation[] | null>(null);
   const [focusRevision, setFocusRevision] = useState(0);
-  const selectObservation = (point: Observation) => { setSelectedId(point.id); setFocusRevision(value => value + 1); };
+  const [focusMode, setFocusMode] = useState<'detail' | 'rail'>('detail');
+  const selectObservation = (point: Observation, mode: 'detail' | 'rail' = 'detail') => { setFocusMode(mode); setSelectedId(point.id); setFocusRevision(value => value + 1); };
   const worker = useRef<Worker | null>(null);
   const stop = () => { worker.current?.terminate(); worker.current = null; setBusy(false); };
   useEffect(() => () => worker.current?.terminate(), []);
@@ -75,11 +76,12 @@ export function LocalPreview() {
   const groupedConnections = useMemo(() => connectAll(groupedPoints), [groupedPoints]);
   const selectedObservation = data?.observations.find(point => point.id === selectedId) ?? null;
   const selectedGroup = viewMode === 'mapped' && selectedId ? groupsByRepresentative.get(selectedId) : undefined;
-  const showPlaceDetails = !!selectedGroup && !!diaryCandidate(landmarkSession, selectedGroup);
+  const mappedSelection = !!selectedGroup && !!diaryCandidate(landmarkSession, selectedGroup);
+  const showPlaceDetails = mappedSelection && focusMode !== 'rail';
   const candidateIndex = candidates?.findIndex(point => point.id === selectedId) ?? -1;
   const resetSelection = () => { setSelectedId(null); setCandidates(null); };
   useEffect(() => {
-    if (!selectedId || !showPlaceDetails) return;
+    if (!selectedId || !mappedSelection) return;
     const outside = (event: PointerEvent) => {
       const target = event.target;
       if (target instanceof Element && target.closest('.record-window, .observation-popup, .landmark-rail [data-place-id]')) return;
@@ -88,7 +90,7 @@ export function LocalPreview() {
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') resetSelection(); };
     document.addEventListener('pointerdown',outside,true);document.addEventListener('keydown',escape);
     return () => { document.removeEventListener('pointerdown',outside,true);document.removeEventListener('keydown',escape); };
-  },[selectedId,showPlaceDetails]);
+  },[selectedId,mappedSelection]);
   const connections = useMemo(() => connectAll(data?.observations ?? []), [data]);
   const times = useMemo(() => connections.map(l => l.seconds / 60), [connections]);
   const distances = useMemo(() => connections.map(l => l.km), [connections]);
@@ -112,10 +114,10 @@ export function LocalPreview() {
   return <main className="map-app">
     <GlobeBoundary resetKey={data?.datasetId ?? 'empty'}><Suspense fallback={<p className="map-message">지도를 준비하고 있습니다…</p>}><MapTilerGlobe points={viewMode === 'raw' ? data?.observations ?? empty : groupedPoints} connections={viewMode === 'raw' ? connections : groupedConnections} groups={viewMode === 'mapped' ? mappedGroups : empty}
       originalPoints={data?.observations ?? empty} landmarkSession={landmarkSession}
-      selectedObservation={selectedObservation} focusRevision={focusRevision} timezone={timezone}
-      showPointPopup={!panel && !showPlaceDetails} candidates={candidates ?? empty} onClose={() => setSelectedId(null)}
-      onMapInteract={() => { if (showPlaceDetails) resetSelection(); }} onSelect={point => setSelectedId(point.id)}
-      onPick={found => { setCandidates(found); setSelectedId(found[0]!.id); }} /></Suspense></GlobeBoundary>
+      selectedObservation={selectedObservation} focusRevision={focusRevision} focusMode={focusMode} timezone={timezone}
+      showPointPopup={!panel && !mappedSelection} candidates={candidates ?? empty} onClose={() => setSelectedId(null)}
+      onMapInteract={() => { if (mappedSelection) resetSelection(); }} onSelect={point => { setFocusMode('detail'); setSelectedId(point.id); }}
+      onPick={found => { setFocusMode('detail'); setCandidates(found); setSelectedId(found[0]!.id); }} /></Suspense></GlobeBoundary>
     <div className="top-controls">
       <nav className="toolbar" aria-label="발자취 도구">
         <span className="brand">FOOTPRINT</span>
@@ -130,7 +132,7 @@ export function LocalPreview() {
       </nav>
       <div className="import-status" role="status" aria-live="polite">{busy ? '로컬에서 위치·시각을 검사하고 정렬하는 중입니다…' : !result ? 'JSON을 올려 발자취를 확인하세요.' : result.ok ? '관측 ' + result.counts.accepted.toLocaleString() + '개 · 연결 ' + connections.length.toLocaleString() + '개' + (groups.length ? ' · 장소별 지점 ' + groups.length.toLocaleString() + '개' : '') : '[' + result.code + '] ' + errors[result.code]}</div>
     </div>
-    {viewMode === 'mapped' && stops.length > 0 && <LandmarkRail key={data?.datasetId} stops={stops} selectedId={selectedId} onSelect={point => { setCandidates(null); setPanel(null); selectObservation(point); }} />}
+    {viewMode === 'mapped' && stops.length > 0 && <LandmarkRail key={data?.datasetId} stops={stops} selectedId={selectedId} onSelect={point => { setCandidates(null); setPanel(null); selectObservation(point, 'rail'); }} />}
     {!panel && selectedObservation && showPlaceDetails && <Panel title="기록 상세" modal={false} onClose={resetSelection}>
       <div className="record-detail">
         <h3>{viewMode === 'mapped' && groupsByRepresentative.get(selectedObservation.id) ? `기록 지점 ${mappedGroups.findIndex(group => group.representative.id === selectedObservation.id) + 1}` : `관측 ${data!.observations.indexOf(selectedObservation) + 1}`}</h3>
