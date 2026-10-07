@@ -22,4 +22,6 @@ coverage/
 !/package-lock.json
 !/tsconfig.json
 !/vercel.json
+# Only this authored public presentation fixture; personal exports remain excluded.
+!/docs/demo/fully-synthetic.seoul-2026-10.json
 .vercel/
