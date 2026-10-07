@@ -1,4 +1,5 @@
-import { inspectSourceLocations } from './locationQuality';
+import { inspectSourceLocations,mergeMovingScreening } from './locationQuality';
+import { compareDetailedSource } from './sourceComparison';
 import { parseTimeline, PREVIEW_LIMITS } from '../../parser';
 import { importFile, type ImportRequest } from './importFile';
 import { parseGpx } from '../../parser/routeImport';
@@ -16,7 +17,8 @@ self.onmessage = async (event: MessageEvent<ImportRequest>) => {
   if(result.ok && quality) {
     const segments=new Map<string,typeof result.data.observations[number][]>();
     for(const point of result.data.detailedObservations??[]) {const id=point.sourceSegment??'';if(!segments.has(id)) segments.set(id,[]);segments.get(id)!.push(point);}
-    for(const points of segments.values()) {const detail=inspectSourceLocations(points);for(const [id,value] of detail.suspects) quality.suspects.set(id,value);for(const id of detail.conflicts) quality.conflicts.add(id);}
+    for(const points of segments.values()) {const detail=inspectSourceLocations(points);mergeMovingScreening(quality,detail);for(const [id,value] of detail.suspects) quality.suspects.set(id,value);for(const id of detail.conflicts) quality.conflicts.add(id);}
+    compareDetailedSource(result.data.observations,result.data.detailedObservations??[],quality);
   }
   self.postMessage({ ...result, quality });
 };

@@ -1,5 +1,6 @@
 import type { Observation, ObservationId } from '../../domain/timeline';
 import { separationKm, type Connection } from './analysis';
+import { emptyMovingScreening,inspectMovingExcursions, type MovingScreening } from './movingExcursions';
 
 export const QUALITY_POLICY = {
   contextRadiusMeters: 100, contextDurationMs: 60_000, returnMeters: 200,
@@ -7,12 +8,18 @@ export const QUALITY_POLICY = {
   speedKmh: 300, gapMs: 30 * 60_000,
 } as const;
 export interface Suspicion {
-  reason: 'brief-return';
+  reason: 'brief-return' | 'moving-excursion';
   entryKmh: number;
   exitKmh: number;
   durationMs: number;
   count: number;
   accuracyUsed: boolean;
+  deviationMeters?: number;
+  detourRatio?: number;
+  surroundingKmh?: number;
+  beforeId?: ObservationId;
+  afterId?: ObservationId;
+  detailComparison?: 'distant' | 'nearby';
 }
 export const SCREENING_LABELS = {
   conflict: '동일 시각 충돌', accuracy: '제공된 정확도 반영 후 거리 부족',
@@ -29,6 +36,7 @@ export interface PatternScreening {
   pattern: number; accuracySupported: number; speed100: number; speed200: number; speed300: number;
 }
 export interface QualityReport {
+  movingScreening?: MovingScreening;
   patternScreening?: PatternScreening;
   /** Entry candidates, not rejected observations; each has exactly one first failing condition. */
   screening?: Screening;
@@ -174,7 +182,9 @@ export function inspectLocations(points: readonly Observation[]): QualityReport 
     }
     if (failure) screening.rejected[failure]++;
   }
-  return {suspects,conflicts,screening,patternScreening:diagnosePatterns(points,candidateStarts,conflicts)};
+  const moving=inspectMovingExcursions(points,conflicts,suspects);
+  for(const [id,evidence] of moving.suspects) suspects.set(id,evidence);
+  return {suspects,conflicts,screening,movingScreening:moving.screening,patternScreening:diagnosePatterns(points,candidateStarts,conflicts)};
 }
 
 /** Only original adjacent observations may connect. Filtering can never create a new edge. */
@@ -215,10 +225,18 @@ export function inspectSourceLocations(points:readonly Observation[]):QualityRep
   const flush=()=>{
     if(!run.length) return;
     const part=inspectLocations(run);
+    mergeMovingScreening(combined,part);
     for(const [id,evidence] of part.suspects) combined.suspects.set(id,evidence);
     for(const id of part.conflicts) combined.conflicts.add(id);
     run=[];
   };
   for(const point of points) {if(run.length && point.predecessorId!==run.at(-1)!.id) flush();run.push(point);}
   flush();return combined;
+}
+
+export function mergeMovingScreening(target:QualityReport,source:QualityReport) {
+  if(!source.movingScreening) return;
+  const total=target.movingScreening??=emptyMovingScreening();
+  for(const key of ['candidates','detected','skipped'] as const) total[key]+=source.movingScreening[key];
+  for(const key of ['context','returnPattern','persistence','speed'] as const) total.rejected[key]+=source.movingScreening.rejected[key];
 }

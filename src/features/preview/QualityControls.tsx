@@ -1,4 +1,5 @@
 import { SCREENING_LABELS, type ScreeningReason } from './locationQuality';
+import { MOVING_REJECTION_LABELS } from './movingExcursions';
 import type { Observation, ObservationId } from '../../domain/timeline';
 import type { QualityReport, projectLocations } from './locationQuality';
 import { ObservationList } from './ObservationList';
@@ -12,7 +13,8 @@ export function QualityControls({ points, report, projection, restored, timezone
   return <section>
     <p>원본 {points.length}개 · 오류 의심 {report.suspects.size}개 · 숨김 {projection.excluded.size}개 · 개별 복원 {restored.size}개 · 시각 충돌 {report.conflicts.size}개</p>
     <p>실선 연결 중단 {projection.breaks.size}곳 (30분 초과 공백 {Array.from(projection.breaks.values()).filter(reason => reason === 'long-gap').length}곳 포함). 의심 지점을 숨겨도 남은 앞뒤를 새로 연결하지 않습니다.</p>
-    <p>짧은 이탈·복귀와 전후 지속성, 양쪽 속도를 함께 검사합니다. 오류 확정이 아니므로 실제 이동이었다면 복원하세요. 원본 전체는 ‘위치 기록’에서 확인할 수 있습니다.</p>
+    <p>제자리 이탈·복귀와 이동 중 경로 이탈·복귀를 함께 검사합니다. 전후 이동 방향·지속성·우회 정도·주변 대비 속도를 조합하며, 오류 확정이 아니므로 실제 이동이었다면 복원하세요. 원본 전체는 ‘위치 기록’에서 확인할 수 있습니다.</p>
+    {report.movingScreening && <details><summary>이동 중 이탈 검사 · 시작 후보 {report.movingScreening.candidates}건 · 의심 구간 {report.movingScreening.detected}건 · 처리 한도로 미검사 {report.movingScreening.skipped}건</summary><p>구간 수는 관측 수와 다릅니다. 아래는 후보별 최초 미충족 단계이며, 뒤 단계의 0건은 충족했다는 뜻이 아닙니다. 처리 한도로 끝내지 못한 후보는 자동 숨기지 않습니다.</p><ul>{(Object.keys(MOVING_REJECTION_LABELS) as (keyof typeof MOVING_REJECTION_LABELS)[]).map(key=><li key={key}>{MOVING_REJECTION_LABELS[key]}: {report.movingScreening!.rejected[key]}건</li>)}</ul></details>}
     <p>숨기기·복원으로 실제 매핑 대상이 달라질 때만 장소 결과를 초기화합니다. 대상이 같으면 현재 결과와 보기를 유지합니다. 아래 버튼으로 안내를 확인하고 허용할 때만 다시 조회합니다.</p>
     <button disabled={!projection.points.length} onClick={onRemap}>현재 지점으로 장소 매핑 안내 열기</button>
     {report.screening && <details className="quality-screening"><summary>탐지되지 않은 이유 확인</summary>

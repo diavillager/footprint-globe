@@ -18,7 +18,7 @@ let stage = 'startup';
       stage = server === dev ? 'development' : 'production';
       const origin = server.resolvedUrls.local[0];
       const context = await browser.newContext({viewport:{width:1440,height:1000}});
-      let requests=0, remoteQueries=0, unexpected=0, errors=0;
+      let requests=0, remoteQueries=0, movingRemoteQueries=0, unexpected=0, errors=0;
       await context.route('**/*', async route => {
         const request=route.request(), url=new URL(request.url());
         if (url.origin === new URL(origin).origin) return route.continue();
@@ -31,6 +31,7 @@ let stage = 'startup';
         if (!['en.wikipedia.org','ja.wikipedia.org'].includes(url.hostname)) {unexpected++;return route.abort();}
         const [north,west,south,east]=url.searchParams.get('ggsbbox').split('|').map(Number);
         if (west<=127.02 && east>=127.02) remoteQueries++;
+        if(south<=37.02 && north>=37.02 && west<=127.003 && east>=127.003) movingRemoteQueries++;
         return route.fulfill({json:{batchcomplete:true,query:{pages:[127,127.02].flatMap((lon,i)=>
           lon>=west && lon<=east && 37>=south && 37<=north ? [{pageid:100+i,ns:0,title:`합성 장소 ${i}`,coordinates:[{lat:37,lon,type:'landmark',primary:true}],pageprops:{wikibase_item:`Q${100+i}`}}] : [])}}});
       });
@@ -117,6 +118,19 @@ let stage = 'startup';
       assert.match(await diagnostic.textContent(),/그중 양쪽 속도 300km.h 초과: 0건/);
       assert.match(await page.locator('.import-status').textContent(),/숨김 0개/);
       await close();
+      const moving={rawSignals:Array.from({length:7},(_,i)=>({position:{LatLng:`${i===3?37.02:37},${127+i*.001}`,timestamp:new Date(Date.UTC(2040,0,1)+i*30000).toISOString()}}))};
+      await page.getByLabel('JSON·GPX 올리기',{exact:true}).setInputFiles({name:'QUALITY_CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(moving))});
+      const movingBefore=movingRemoteQueries;await allow();
+      assert.match(await page.locator('.import-status').textContent(),/관측 7개 .*숨김 1개/);
+      assert.equal(await page.locator('.map-surface').getAttribute('data-visible-points'),'6');
+      assert.equal(movingRemoteQueries,movingBefore,'moving excursion must not generate a region query');
+      await inspect();
+      assert.match(await page.getByRole('dialog',{name:'위치 검사',exact:true}).textContent(),/이동 중 경로 이탈·복귀/);
+      assert.match(await page.getByRole('dialog',{name:'위치 검사',exact:true}).textContent(),/의심 구간 1건/);
+      await page.screenshot({path:`node_modules/.cache/moving-quality-${stage}.png`});
+      const beforeMovingRestore=requests;await page.getByRole('button',{name:'이 지점 복원',exact:true}).click();
+      assert.equal(await mapped.isDisabled(),true);await page.waitForTimeout(600);assert.equal(requests,beforeMovingRestore);
+      assert.match(await page.locator('.import-status').textContent(),/관측 7개 .*연결 6개 · 숨김 0개/);await close();
       await page.getByRole('button',{name:'지우기',exact:true}).click();
       assert.equal(await page.getByRole('button',{name:/^위치 검사/}).isDisabled(),true);
       assert.equal(await page.evaluate(()=>localStorage.length+sessionStorage.length),0);
