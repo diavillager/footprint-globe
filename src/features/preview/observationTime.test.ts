@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { formatObservationTime } from './observationTime';
+import { formatObservationTime, formatDiaryTime } from './observationTime';
 import { parseRawPreview } from '../../parser/rawPreview';
 
 it('switches UTC and Korea across a date boundary while retaining source fractional precision', () => {
@@ -7,6 +7,8 @@ it('switches UTC and Korea across a date boundary while retaining source fractio
   const instant = Object.freeze({ sourceText, epochMs: Date.parse(sourceText) });
   expect(formatObservationTime(instant, 'UTC')).toBe('2040-01-01 16:02:03.123456789 UTC');
   expect(formatObservationTime(instant, 'Asia/Seoul')).toBe('2040-01-02 01:02:03.123456789 KST');
+  expect(formatDiaryTime(instant, 'UTC')).toBe('2040년 1월 1일 약 16:02:03 (UTC)');
+  expect(formatDiaryTime(instant, 'Asia/Seoul')).toBe('2040년 1월 2일 약 01:02:03 (KST)');
   expect(instant.sourceText).toBe(sourceText);
 });
 

@@ -122,3 +122,38 @@ main.map-app { position: fixed; inset: 0; max-width: none; margin: 0; padding: 0
 
 .landmark-photo img { display: block; width: 100%; max-height: 180px; object-fit: cover; }
 .landmark-photo a { display: block; color: #07685e; font-size: 10px; line-height: 1.3; }
+
+/* Import consent, progress ring and horizontal landmark cards */
+.consent-actions { display: flex; justify-content: flex-end; gap: 12px; }
+.mapping-progress { position: relative; }
+.mapping-progress-trigger { padding: 2px !important; border: 0 !important; background: transparent !important; }
+.mapping-progress-trigger [role=progressbar] { position: relative; display: block; width: 40px; height: 40px; }
+.mapping-progress-trigger svg { width: 40px; height: 40px; transform: rotate(-90deg); }
+.mapping-progress-trigger circle { fill: none; stroke: #d4e4df; stroke-width: 4; }
+.mapping-progress-trigger .progress-value { stroke: #087e78; stroke-linecap: round; transition: stroke-dasharray .2s; }
+.mapping-progress-trigger [role=progressbar] > span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 9px; color: #175148; }
+.mapping-progress-detail { position: fixed; z-index: 8; width: 270px; box-sizing: border-box; padding: 14px; border-radius: 12px; background: white; color: #244b40; box-shadow: 0 6px 24px #12352c35; font-size: 12px; line-height: 1.5; }
+.mapping-progress-detail p { margin: 7px 0; }
+.mapping-progress-detail button { display: block; margin-top: 8px; width: 100%; font-size: 12px; }
+.mapping-progress-detail small { display: block; }
+.diary-balloon { width: 310px; }
+.diary-card .diary-card-hit { padding: 0; display: grid; grid-template-columns: 132px 1fr; gap: 0; cursor: pointer; }
+.diary-card-photo { background: #edf4f0; display: grid; place-items: center; min-height: 132px; }
+.diary-card .landmark-photo img { width: 132px; height: 140px; max-height: none; object-fit: contain; }
+.diary-card-copy { display: grid; grid-template-columns: 26px 1fr; gap: 7px; padding: 13px 10px; align-content: center; }
+.diary-card-copy .diary-number { grid-row: auto; }
+.diary-card-copy small { grid-column: 1 / -1; font-size: 11px; line-height: 1.5; }
+.photo-placeholder { color: #70887e; font-size: 12px; }
+.record-detail > h3 { margin: 0; font-size: 23px; }
+.record-detail .landmark-photo img { width: 100%; height: auto; max-height: 48vh; object-fit: contain; border-radius: 12px; background: #edf4f0; }
+.record-detail .landmark-photo a { margin: 8px 0; }
+.record-detail .landmark-panel { border-top: 0; }
+.detail-neighbors { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 699px) {
+ .diary-balloon { width: 280px; }
+ .diary-card .diary-card-hit { grid-template-columns: 112px 1fr; }
+ .diary-card .landmark-photo img { width: 112px; height: 140px; }
+ .mapping-progress-detail { width: min(270px, calc(100vw - 20px)); }
+}
+
+.diary-attribution { display: block; padding: 4px 8px; font-size: 9px; line-height: 1.3; color: #07685e; max-height: 30px; overflow: auto; }

@@ -13,3 +13,9 @@ export function formatObservationTime(time: Instant, timezone: DisplayTimezone):
   const wholeSecondMs = Date.parse(time.sourceText.replace(/\.\d+(?=Z|[+-]\d{2}:\d{2}$)/, ''));
   return `${formatters[timezone].format(wholeSecondMs)}${fraction ? `.${fraction}` : ''} ${timezone === 'UTC' ? 'UTC' : 'KST'}`;
 }
+
+export function formatDiaryTime(time: Instant, timezone: DisplayTimezone): string {
+  const value = formatObservationTime(time, timezone);
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2}:\d{2})/);
+  return match ? `${match[1]}년 ${Number(match[2])}월 ${Number(match[3])}일 약 ${match[4]} (${timezone === 'UTC' ? 'UTC' : 'KST'})` : value;
+}

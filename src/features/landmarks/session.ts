@@ -22,7 +22,9 @@ export class LandmarkSession {
   private listeners = new Set<() => void>();
   private revision = 0;
   private generation = 0;
-  private active: { groupId: string; controller: AbortController; timer: ReturnType<typeof setTimeout>; media?: boolean } | null = null;
+  private active = new Map<symbol, { id: string; media: boolean; controller: AbortController; timer: ReturnType<typeof setTimeout> }>();
+  private coordinateGroups = new Map<string, Set<string>>();
+  private coordinateStates = new Map<string, QueryState>();
   private blocked: LandmarkError | null = null;
   consent = false;
   attempts = 0;
@@ -45,7 +47,8 @@ export class LandmarkSession {
   }
   hasImageAttempt(id: string) { return this.imageAttempts.has(id); }
   selection(groupId: string) { return this.selections.get(groupId) ?? null; }
-  get busy() { return this.active !== null; }
+  get busy() { return this.active.size > 0; }
+  get capacity() { return this.active.size < 3; }
   get unavailable(): LandmarkError | null { return !this.key.trim() ? 'CONFIGURATION' : this.blocked; }
   allow() { this.consent = true; this.emit(); }
   select(groupId: string, candidateId: string | null) {
@@ -56,67 +59,82 @@ export class LandmarkSession {
   }
   cancel() {
     this.generation++;
-    if (this.active) {
-      clearTimeout(this.active.timer);
-      this.active.controller.abort();
-      if (this.active.media) this.imageStates.set(this.active.groupId, 'cancelled');
-      else this.states.set(this.active.groupId, { status: 'cancelled' });
-      this.active = null;
-      this.emit();
+    for (const job of this.active.values()) {
+      clearTimeout(job.timer); job.controller.abort();
+      if (job.media) this.imageStates.set(job.id, 'cancelled');
+      else this.updateCoordinate(job.id, { status: 'cancelled' });
     }
+    this.active.clear(); this.emit();
   }
-  revoke() { this.cancel(); this.consent = false; this.states.clear(); this.selections.clear(); this.images.clear(); this.imageAttempts.clear(); this.imageStates.clear(); this.emit(); }
+  revoke() {
+    this.cancel(); this.consent = false; this.states.clear(); this.selections.clear(); this.images.clear();
+    this.imageAttempts.clear(); this.imageStates.clear(); this.coordinateGroups.clear(); this.coordinateStates.clear(); this.emit();
+  }
   dispose() { this.revoke(); this.attempts = 0; this.mediaRequests = 0; this.blocked = null; }
-  async queryImage(id: string): Promise<void> {
-    if (!this.consent || this.busy || this.unavailable || this.imageAttempts.has(id)) return;
-    this.imageAttempts.add(id); this.imageStates.set(id, 'loading');
-    const generation = ++this.generation, controller = new AbortController();
-    this.attempts++;
+  private updateCoordinate(key: string, state: QueryState) {
+    this.coordinateStates.set(key, state);
+    for (const id of this.coordinateGroups.get(key) ?? []) this.states.set(id, state);
+  }
+  private async run(id: string, media: boolean, work: (signal: AbortSignal, valid: () => boolean) => Promise<void>) {
+    const token = Symbol(), generation = this.generation, controller = new AbortController();
+    const valid = () => generation === this.generation && this.active.has(token);
+    const fail = (error: unknown) => {
+      if (!valid()) return;
+      const code = error instanceof LandmarkFailure ? error.code : 'NETWORK';
+      if (code === 'AUTH' || code === 'RATE_LIMIT') this.blocked = code;
+      if (media) this.imageStates.set(id, error instanceof ImageFailure && error.code === 'UNSUPPORTED' ? 'unsupported' : 'error');
+      else this.updateCoordinate(id, { status: 'error', code });
+    };
     const timer = setTimeout(() => {
-      if (generation !== this.generation) return;
-      this.generation++; controller.abort(); this.active = null; this.imageStates.set(id, 'error'); this.emit();
+      fail(new LandmarkFailure('TIMEOUT')); controller.abort(); this.active.delete(token); this.emit();
     }, REQUEST_TIMEOUT_MS);
-    this.active = { groupId: id, controller, timer, media: true }; this.emit();
-    try {
-      const image = await this.imageLookup(id, this.key, controller.signal, fetch, () => {
-        if (generation === this.generation) { this.attempts++; this.mediaRequests++; this.emit(); }
+    this.active.set(token, { id, media, controller, timer }); this.attempts++; this.emit();
+    try { await work(controller.signal, valid); } catch (error) { fail(error); }
+    finally { clearTimeout(timer); if (valid()) { this.active.delete(token); this.emit(); } }
+  }
+  async queryImage(id: string): Promise<void> {
+    if (!this.consent || !this.capacity || this.unavailable || this.imageAttempts.has(id)) return;
+    this.imageAttempts.add(id); this.imageStates.set(id, 'loading');
+    await this.run(id, true, async (signal, valid) => {
+      const image = await this.imageLookup(id, this.key, signal, fetch, () => {
+        if (valid()) { this.attempts++; this.mediaRequests++; this.emit(); }
       });
-      if (generation === this.generation) { this.images.set(id, image); this.imageStates.set(id, image ? 'ready' : 'missing'); }
-    } catch (error) {
-      if (generation === this.generation) this.imageStates.set(id, error instanceof ImageFailure && error.code === 'UNSUPPORTED' ? 'unsupported' : 'error');
-      if (generation === this.generation && error instanceof LandmarkFailure && (error.code === 'AUTH' || error.code === 'RATE_LIMIT')) this.blocked = error.code;
-    } finally {
-      clearTimeout(timer);
-      if (generation === this.generation) { this.active = null; this.emit(); }
-    }
+      if (valid()) { this.images.set(id, image); this.imageStates.set(id, image ? 'ready' : 'missing'); }
+    });
   }
   async query(group: ObservationGroup): Promise<void> {
     const previous = this.state(group.groupId);
-    if (!this.consent || this.active || previous.status === 'success' || previous.status === 'empty') return;
+    if (!this.consent || previous.status !== 'idle') return;
+    const point = group.representative.coordinate, key = `${point.latitude},${point.longitude}`;
+    const reused = this.coordinateStates.get(key);
+    const ids = this.coordinateGroups.get(key) ?? new Set<string>(); ids.add(group.groupId); this.coordinateGroups.set(key, ids);
+    if (reused) { this.states.set(group.groupId, reused); this.emit(); return; }
     if (this.unavailable) { this.states.set(group.groupId, { status: 'error', code: this.unavailable }); this.emit(); return; }
-    const generation = ++this.generation;
-    const controller = new AbortController();
-    this.attempts++;
-    this.states.set(group.groupId, { status: 'loading' });
-    const timer = setTimeout(() => {
-      if (generation !== this.generation) return;
-      this.generation++; controller.abort(); this.active = null;
-      this.states.set(group.groupId, { status: 'error', code: 'TIMEOUT' }); this.emit();
-    }, REQUEST_TIMEOUT_MS);
-    this.active = { groupId: group.groupId, controller, timer };
-    this.emit();
-    try {
-      const candidates = await this.lookup(group.representative.coordinate, this.key, controller.signal);
-      if (generation !== this.generation) return;
-      this.states.set(group.groupId, { status: candidates.length ? 'success' : 'empty', candidates, fetchedAt: Date.now() });
-    } catch (error) {
-      if (generation !== this.generation) return;
-      const code = error instanceof LandmarkFailure ? error.code : 'NETWORK';
-      if (code === 'AUTH' || code === 'RATE_LIMIT') this.blocked = code;
-      this.states.set(group.groupId, { status: 'error', code });
-    } finally {
-      clearTimeout(timer);
-      if (generation === this.generation) { this.active = null; this.emit(); }
-    }
+    if (!this.capacity) return;
+    this.updateCoordinate(key, { status: 'loading' });
+    await this.run(key, false, async (signal, valid) => {
+      const candidates = await this.lookup(point, this.key, signal);
+      if (valid()) this.updateCoordinate(key, { status: candidates.length ? 'success' : 'empty', candidates, fetchedAt: Date.now() });
+    });
   }
+}
+
+/** Only this scheduler starts provider work in the UI. At most 4 starts/sec across both phases. */
+export function startMapping(groups: readonly ObservationGroup[], session: LandmarkSession) {
+  let cursor = 0, photoCursor = 0;
+  const timer = setInterval(() => {
+    if (!session.consent || !session.capacity || session.unavailable) return;
+    while (cursor < groups.length && session.state(groups[cursor]!.groupId).status !== 'idle') cursor++;
+    while (cursor < groups.length) { const before = session.attempts; void session.query(groups[cursor++]!); if (session.attempts !== before) return; }
+    // Wait for all place results so images cannot delay names or skip late results.
+    if (groups.some(group => session.state(group.groupId).status === 'loading')) return;
+    while (photoCursor < groups.length) {
+      const state = session.state(groups[photoCursor++]!.groupId);
+      if (state.status !== 'success') continue;
+      const candidate = state.candidates[0];
+      if (candidate && !session.hasImageAttempt(candidate.providerPlaceId)) { void session.queryImage(candidate.providerPlaceId); return; }
+    }
+    if (!session.busy) clearInterval(timer);
+  }, 250);
+  return () => clearInterval(timer);
 }

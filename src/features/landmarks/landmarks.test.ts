@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Observation } from '../../domain/timeline';
 import { groupObservations } from './groups';
 import { fetchCandidates, fetchImage, imageReference, ImageFailure, normalizeImage, geoapifyUrl, LandmarkFailure, normalizeCandidates } from './geoapify';
-import { LandmarkSession, REQUEST_TIMEOUT_MS } from './session';
+import { LandmarkSession, REQUEST_TIMEOUT_MS, startMapping } from './session';
 import { buildTrip, trips } from '../../fixtures/travel';
 import { parseTimeline } from '../../parser';
 
 const point = (id: number, longitude = 0, ms = id * 60_000): Observation => ({ id: `observation:${id}`, coordinate: { latitude: 0, longitude }, time: { epochMs: ms, sourceText: new Date(ms).toISOString() } });
-const group = (id = 0) => groupObservations('dataset:test', [point(id)])[0]!;
+const group = (id = 0) => groupObservations('dataset:test', [point(id, id * .01)])[0]!;
 const feature = (id: string, name: unknown = '가상 박물관', coordinates: unknown = [0, 0]) => ({ properties: { place_id: id, name, categories: ['entertainment.museum'] }, geometry: { type: 'Point', coordinates } });
 const body = { features: [feature('one')] };
 const candidates = normalizeCandidates(body, point(0).coordinate);
@@ -100,12 +100,12 @@ describe('파일별 조회 수명', () => {
     expect(lookup).toHaveBeenCalledTimes(41);
     expect(session.state(group(40).groupId).status).toBe('empty');
   });
-  it('단일 동시 요청·취소·파일 교체 뒤 늦은 응답을 차단한다', async () => {
+  it('동일 좌표 요청 공유·취소·파일 교체 뒤 늦은 응답을 차단한다', async () => {
     let resolve!: (value: typeof candidates) => void;
     const lookup = vi.fn((_coordinate, _key, _signal) => new Promise<typeof candidates>(done => { resolve = done; }));
     const session = new LandmarkSession('key', lookup); session.allow();
     const pending = session.query(group());
-    await session.query(group()); await session.query(group(1)); expect(lookup).toHaveBeenCalledTimes(1);
+    await session.query(group()); await session.query(groupObservations('dataset:revisit', [point(1)])[0]!); expect(lookup).toHaveBeenCalledTimes(1);
     const signal = lookup.mock.calls[0]![2] as AbortSignal;
     session.dispose(); expect(signal.aborted).toBe(true);
     resolve(candidates); await pending;
@@ -138,13 +138,13 @@ describe('랜드마크 사진', () => {
     for (const url of ['http://upload.wikimedia.org/x.jpg', 'https://localhost/x.png', 'https://upload.wikimedia.org.evil.test/x.jpg', 'https://upload.wikimedia.org/x.svg', 'javascript:alert(1)']) expect(normalizeImage(wrap(url))).toBeNull();
     expect(normalizeImage(wrap('https://upload.wikimedia.org/wikipedia/commons/a/ab/Test.jpg'))).toEqual({ url: 'https://upload.wikimedia.org/wikipedia/commons/a/ab/Test.jpg', source: 'https://commons.wikimedia.org/wiki/File:Test.jpg' });
   });
-  it('사진 상세 요청도 직렬화·캐시하고 파일 교체 후 늦은 응답을 무시한다', async () => {
+  it('사진 상세 중복을 캐시하고 파일 교체 후 늦은 응답을 무시한다', async () => {
     let finish!: (value: { url: string; source: string }) => void;
     const lookup = vi.fn(() => new Promise<{ url: string; source: string }>(resolve => { finish = resolve; }));
     const session = new LandmarkSession('key', vi.fn().mockResolvedValue([]), lookup);
     await session.queryImage('one'); expect(lookup).not.toHaveBeenCalled();
     session.allow(); const pending = session.queryImage('one');
-    await session.query(group()); await session.queryImage('two');
+    await session.queryImage('one');
     expect(session.attempts).toBe(1); expect(lookup).toHaveBeenCalledTimes(1);
     session.dispose(); finish({ url: 'test', source: 'test' }); await pending;
     expect(session.image('one')).toBeNull(); expect(session.hasImageAttempt('one')).toBe(false);
@@ -190,4 +190,40 @@ describe('확장 사진 조회와 진단', () => {
 it('실제 Commons 썸네일 호스트와 공백·밑줄 차이를 정규화하고 추적 쿼리를 제외한다', () => {
   const image = normalizeImage({ features: [{ properties: { wiki_and_media: { image: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a8/Public_File.jpg/500px-Public_File.jpg?utm_source=test' } } }] });
   expect(image).toEqual({ url: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a8/Public_File.jpg/500px-Public_File.jpg', source: 'https://commons.wikimedia.org/wiki/File:Public%20File.jpg' });
+});
+
+it('전체 조회는 최대 3건·250ms 간격으로 병행하고 동일 좌표 재방문은 재사용한다', async () => {
+  vi.useFakeTimers();
+  let active = 0, peak = 0;
+  const starts: number[] = [];
+  const lookup = vi.fn(() => {
+    starts.push(Date.now()); peak = Math.max(peak, ++active);
+    return new Promise<typeof candidates>(resolve => setTimeout(() => { active--; resolve([]); }, 1000));
+  });
+  const session = new LandmarkSession('key', lookup);
+  const groups = Array.from({ length: 6 }, (_, i) => group(i));
+  groups.push(groupObservations('dataset:revisit', [point(99)])[0]!);
+  const stop = startMapping(groups, session);
+  await vi.advanceTimersByTimeAsync(500);
+  expect(lookup).not.toHaveBeenCalled();
+  session.allow();
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(lookup).toHaveBeenCalledTimes(6);
+  expect(peak).toBe(3);
+  expect(starts.slice(1).every((value, i) => value - starts[i]! >= 250)).toBe(true);
+  expect(groups.every(item => session.state(item.groupId).status === 'empty')).toBe(true);
+  stop(); session.dispose();
+});
+it('병행 중인 모든 요청을 철회하고 늦은 응답을 버린다', async () => {
+  const finishes: Array<() => void> = [], signals: AbortSignal[] = [];
+  const session = new LandmarkSession('key', (_coordinate, _key, signal) => {
+    signals.push(signal);
+    return new Promise(resolve => finishes.push(() => resolve(candidates)));
+  });
+  session.allow();
+  const pending = [0, 1, 2].map(i => session.query(group(i)));
+  await session.query(group(3)); expect(signals).toHaveLength(3);
+  session.revoke(); expect(signals.every(signal => signal.aborted)).toBe(true);
+  finishes.forEach(finish => finish()); await Promise.all(pending);
+  expect(session.state(group().groupId).status).toBe('idle');
 });
