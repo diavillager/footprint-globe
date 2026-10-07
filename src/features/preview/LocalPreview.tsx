@@ -8,6 +8,7 @@ import type { DisplayTimezone } from './observationTime';
 import { createWikimediaSession } from '../landmarks/createSession';
 import { diaryCandidate, MappingConsent, MappingProgress, usePlaceMapping } from '../landmarks/TravelDiary';
 import { LandmarkPanel } from '../landmarks/LandmarkPanel';
+import { LandmarkRail, mappedStops } from '../landmarks/LandmarkRail';
 import { formatDiaryTime } from './observationTime';
 const empty = [] as const;
 const MapTilerGlobe = lazy(() => import('./MapTilerGlobe'));
@@ -26,9 +27,9 @@ class GlobeBoundary extends Component<{ children: ReactNode; resetKey: string },
   render() { return this.state.failed ? <p className="map-message" role="alert">[DISPLAY_UNAVAILABLE] 지도를 표시하지 못했습니다. 표시 한도를 초과했거나 WebGL을 사용할 수 없습니다. 기록을 지우거나 다른 파일을 등록해 다시 시도하세요. 목록·분포는 상단 버튼에서 확인할 수 있습니다.</p> : this.props.children; }
 }
 
-function Panel({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
+function Panel({ title, children, onClose, modal = true }: { title: string; children: ReactNode; onClose: () => void; modal?: boolean }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => { const node = dialog.current!; node.showModal(); return () => node.close(); }, []);
+  useEffect(() => { const node = dialog.current!; if (modal) node.showModal(); else node.show(); return () => node.close(); }, [modal]);
   return <dialog ref={dialog} className={`data-window${title === '기록 상세' ? ' record-window' : ''}`} aria-label={title} onCancel={onClose} onClick={event => { if (event.target === event.currentTarget) { const rect = event.currentTarget.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onClose(); } }}><div className="window-heading"><h2>{title}</h2><button autoFocus aria-label="창 닫기" onClick={onClose}>×</button></div><div className="window-content">{children}</div></dialog>;
 }
 
@@ -68,6 +69,8 @@ export function LocalPreview() {
   usePlaceMapping(landmarkSession);
   const groups = landmarkSession.groups;
   const groupsByRepresentative = useMemo(() => new Map(groups.map(group => [group.representative.id, group])), [groups]);
+  const stops = useMemo(() => mappedStops(groups, group => diaryCandidate(landmarkSession, group)), [groups, landmarkSession]);
+  const mappedGroups = useMemo(() => stops.map(stop => stop.group), [stops]);
   const groupedPoints = useMemo(() => groups.map(group => group.representative), [groups]);
   const groupedConnections = useMemo(() => connectAll(groupedPoints), [groupedPoints]);
   const selectedObservation = data?.observations.find(point => point.id === selectedId) ?? null;
@@ -75,6 +78,17 @@ export function LocalPreview() {
   const showPlaceDetails = !!selectedGroup && !!diaryCandidate(landmarkSession, selectedGroup);
   const candidateIndex = candidates?.findIndex(point => point.id === selectedId) ?? -1;
   const resetSelection = () => { setSelectedId(null); setCandidates(null); };
+  useEffect(() => {
+    if (!selectedId || !showPlaceDetails) return;
+    const outside = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('.record-window, .observation-popup, .landmark-rail [data-place-id]')) return;
+      resetSelection();
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') resetSelection(); };
+    document.addEventListener('pointerdown',outside,true);document.addEventListener('keydown',escape);
+    return () => { document.removeEventListener('pointerdown',outside,true);document.removeEventListener('keydown',escape); };
+  },[selectedId,showPlaceDetails]);
   const connections = useMemo(() => connectAll(data?.observations ?? []), [data]);
   const times = useMemo(() => connections.map(l => l.seconds / 60), [connections]);
   const distances = useMemo(() => connections.map(l => l.km), [connections]);
@@ -96,11 +110,11 @@ export function LocalPreview() {
     } catch { stop(); setResult({ ok: false, code: 'FILE_READ_FAILED' }); }
   };
   return <main className="map-app">
-    <GlobeBoundary resetKey={data?.datasetId ?? 'empty'}><Suspense fallback={<p className="map-message">지도를 준비하고 있습니다…</p>}><MapTilerGlobe points={viewMode === 'raw' ? data?.observations ?? empty : groupedPoints} connections={viewMode === 'raw' ? connections : groupedConnections} groups={viewMode === 'mapped' ? groups : empty}
+    <GlobeBoundary resetKey={data?.datasetId ?? 'empty'}><Suspense fallback={<p className="map-message">지도를 준비하고 있습니다…</p>}><MapTilerGlobe points={viewMode === 'raw' ? data?.observations ?? empty : groupedPoints} connections={viewMode === 'raw' ? connections : groupedConnections} groups={viewMode === 'mapped' ? mappedGroups : empty}
       originalPoints={data?.observations ?? empty} landmarkSession={landmarkSession}
       selectedObservation={selectedObservation} focusRevision={focusRevision} timezone={timezone}
       showPointPopup={!panel && !showPlaceDetails} candidates={candidates ?? empty} onClose={() => setSelectedId(null)}
-      onSelect={point => setSelectedId(point.id)}
+      onMapInteract={() => { if (showPlaceDetails) resetSelection(); }} onSelect={point => setSelectedId(point.id)}
       onPick={found => { setCandidates(found); setSelectedId(found[0]!.id); }} /></Suspense></GlobeBoundary>
     <div className="top-controls">
       <nav className="toolbar" aria-label="발자취 도구">
@@ -116,9 +130,10 @@ export function LocalPreview() {
       </nav>
       <div className="import-status" role="status" aria-live="polite">{busy ? '로컬에서 위치·시각을 검사하고 정렬하는 중입니다…' : !result ? 'JSON을 올려 발자취를 확인하세요.' : result.ok ? '관측 ' + result.counts.accepted.toLocaleString() + '개 · 연결 ' + connections.length.toLocaleString() + '개' + (groups.length ? ' · 장소별 지점 ' + groups.length.toLocaleString() + '개' : '') : '[' + result.code + '] ' + errors[result.code]}</div>
     </div>
-    {!panel && selectedObservation && showPlaceDetails && <Panel title="기록 상세" onClose={() => setSelectedId(null)}>
+    {viewMode === 'mapped' && stops.length > 0 && <LandmarkRail key={data?.datasetId} stops={stops} selectedId={selectedId} onSelect={point => { setCandidates(null); setPanel(null); selectObservation(point); }} />}
+    {!panel && selectedObservation && showPlaceDetails && <Panel title="기록 상세" modal={false} onClose={resetSelection}>
       <div className="record-detail">
-        <h3>{viewMode === 'mapped' && groupsByRepresentative.get(selectedObservation.id) ? `기록 지점 ${groups.findIndex(group => group.representative.id === selectedObservation.id) + 1}` : `관측 ${data!.observations.indexOf(selectedObservation) + 1}`}</h3>
+        <h3>{viewMode === 'mapped' && groupsByRepresentative.get(selectedObservation.id) ? `기록 지점 ${mappedGroups.findIndex(group => group.representative.id === selectedObservation.id) + 1}` : `관측 ${data!.observations.indexOf(selectedObservation) + 1}`}</h3>
         <p>{formatDiaryTime(selectedObservation.time, timezone)}</p>
         <p>위도 {selectedObservation.coordinate.latitude} · 경도 {selectedObservation.coordinate.longitude}</p>
         {candidates && candidates.length > 1 && <div className="detail-neighbors"><p>겹친 지점 {candidateIndex + 1} / {candidates.length}</p><button disabled={candidateIndex <= 0} onClick={() => setSelectedId(candidates[candidateIndex - 1]!.id)}>이전 지점</button><button disabled={candidateIndex >= candidates.length - 1} onClick={() => setSelectedId(candidates[candidateIndex + 1]!.id)}>다음 지점</button></div>}
