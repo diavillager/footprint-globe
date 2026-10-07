@@ -50,7 +50,7 @@ Geoapify는 IP 제한 설정 수정 후 실제 조회 32회가 모두 성공했�
 | 이탈리아 | 8 | 58 |
 | 일본 | 8 | 45 |
 
-후보 합계는 지점 간 중복을 포함합니다. 방문한 랜드마크 수나 검색 정확도가 아닙니다. 작은 기념비·흉상과 계절 행사도 결과에 포함되었습니다. 현재 API 데이터가 과거 여행 날짜에 존재했던 명소임을 보장하지 않습니다. 
+후보 합계는 지점 간 중복을 포함합니다. 방문한 랜드마크 수나 검색 정확도가 아닙니다. 작은 기념비·흉상과 계절 행사도 결과에 포함되었습니다. 현재 API 데이터가 과거 여행 날짜에 존재했던 명소임을 보장하지 않습니다.
 
 공식 문서: [MapTiler Geocoding](https://docs.maptiler.com/cloud/api/geocoding/), [Geoapify Places](https://apidocs.geoapify.com/docs/places/), [Geoapify 키 제한](https://myprojects.geoapify.com/help/api-keys/).
 
