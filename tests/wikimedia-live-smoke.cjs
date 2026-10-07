@@ -33,11 +33,14 @@ if (!process.argv.includes('--live')) { console.log('Use --live to verify Wikime
   await page.waitForFunction(() => ![...document.querySelectorAll('button')].find(button => button.textContent === '장소별 보기').disabled);
   assert.equal(await page.getByRole('button', { name: '원본 경로', exact: true }).getAttribute('aria-pressed'), 'true');
   await page.getByRole('button', { name: '장소별 보기', exact: true }).click();
+  await page.locator('.diary-balloon:visible strong').filter({hasText:'구마모토성'}).waitFor();
   const img = page.locator('.diary-balloon:visible img').first();
   await img.waitFor(); await page.waitForFunction(() => [...document.querySelectorAll('.diary-balloon img')].some(img => img.complete && img.naturalWidth > 1));
   await page.locator('.diary-balloon:visible button').first().click();
   const detail = page.getByRole('region', { name: '선택한 장소 상세' }); await detail.waitFor();
   const name = await detail.getByRole('heading').first().textContent();
+  assert.equal(name, '구마모토성');
+  assert.match(await detail.textContent(), /현지 이름: 熊本城/);
   const realPhoto = detail.locator('img'); await realPhoto.waitFor();
   assert.ok(await realPhoto.evaluate(img => img.complete && img.naturalWidth > 1));
   await page.getByRole('link', { name: '장소 원문 확인', exact: true }).waitFor();

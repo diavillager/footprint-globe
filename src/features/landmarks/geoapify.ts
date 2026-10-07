@@ -8,6 +8,7 @@ export interface LandmarkCandidate {
   readonly sourceUrl?: string;
   readonly providerPlaceId: string;
   readonly name: string;
+  readonly originalName?: string;
   readonly coordinate: Coordinate;
   readonly categories: readonly string[];
   readonly distanceMeters: number;

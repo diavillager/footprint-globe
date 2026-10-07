@@ -51,7 +51,7 @@ let stage = 'startup';
     const [north,west,south,east] = url.searchParams.get('ggsbbox').split('|').map(Number);
     return route.fulfill({json:{batchcomplete:true,query:{pages:mode === 'empty' ? [] : landmarks.filter(f => {
      const [x,y] = f.geometry.coordinates; return x >= west && x <= east && y >= south && y <= north;
-    }).map(f=>({pageid:f.id,ns:0,title:f.properties.name,coordinates:[{lat:f.geometry.coordinates[1],lon:f.geometry.coordinates[0],type:'landmark',primary:true}],pageprops:{wikibase_item:'Q'+f.id}}))}}});
+    }).map(f=>({pageid:f.id,ns:0,title:'原文 '+f.id,terms:{label:[f.properties.name]},coordinates:[{lat:f.geometry.coordinates[1],lon:f.geometry.coordinates[0],type:'landmark',primary:true}],pageprops:{wikibase_item:'Q'+f.id}}))}}});
    });
    const page = await context.newPage(); page.setDefaultTimeout(35000);
    page.on('pageerror', () => errors++);

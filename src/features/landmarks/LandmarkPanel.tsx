@@ -31,6 +31,7 @@ export function LandmarkPanel({ group, session }: { group: ObservationGroup; ses
       </aside>
       <div className="place-details" role="region" aria-label="선택한 장소 상세">
         <h3>{candidate.name}</h3>
+        {candidate.originalName && <p>현지 이름: {candidate.originalName}</p>}
         <p className="place-category">{categoryLabel(candidate.categories)}</p>
         {session.image(candidate.providerPlaceId) && photoStatus !== 'load-error' ? <LandmarkPhoto key={candidate.providerPlaceId} id={candidate.providerPlaceId} session={session} eager /> : <div className="place-photo-empty">{photoStatus === undefined ? '이 장소의 사진은 아직 조회되지 않았습니다.' : photoStatus === 'loading' ? '사진을 조회하고 있습니다…' : '표시할 사진이 없습니다.'}</div>}
         <dl><dt>기록 지점과 거리</dt><dd>{Math.round(candidate.distanceMeters)}m</dd><dt>장소 위치</dt><dd>{candidate.coordinate.latitude.toFixed(5)}, {candidate.coordinate.longitude.toFixed(5)}</dd></dl>

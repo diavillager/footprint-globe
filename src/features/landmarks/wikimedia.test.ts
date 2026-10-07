@@ -11,7 +11,32 @@ it('경계와 검색 조건만 보내고 키·기록 ID·시각을 포함하지 
  const url=wikipediaRegionUrl(bounds,'ja');expect(url.origin).toBe('https://ja.wikipedia.org');
  expect(url.searchParams.get('ggsbbox')).toBe('0.02|0|0|0.02');expect(url.searchParams.get('pilicense')).toBe('free');
  expect(url.searchParams.has('apiKey')).toBe(false);
+ expect(url.searchParams.get('wbptlanguage')).toBe('ko');expect(url.searchParams.get('lllang')).toBe('ko');
  expect(()=>wikipediaRegionUrl({...bounds,west:1},'ja')).toThrow(LandmarkFailure);
+});
+it('한국어 이름·한국어 문서 제목을 우선하고 없으면 원문을 보존한다',()=>{
+ const input=[
+  {...page(1),terms:{label:['한국어 이름']},langlinks:[{lang:'ko',title:'한국어 문서'}]},
+  {...page(2),terms:{label:['English fallback']},langlinks:[{lang:'ko',title:'한국어 문서'}]},
+  {...page(3),terms:{label:['English fallback']},langlinks:[{lang:'en',title:'다른 언어 링크'}]},
+  {...page(4),terms:{label:[null,42,'  ']},langlinks:[{lang:'ko',title:null}]},
+ ];
+ const places=normalizeWikipedia({query:{pages:input}},bounds,'ja').items.map(item=>item.place);
+ expect(places.map(p=>p.name)).toEqual(['한국어 이름','한국어 문서','合成博物館','合成博物館']);
+ expect(places[0]!.originalName).toBe('合成博物館');expect(places[2]!.originalName).toBeUndefined();
+ expect(places.every(p=>p.providerPlaceId==='wikidata:Q123' && p.coordinate.latitude===.01)).toBe(true);
+});
+it('다음 속성 페이지의 한국어 이름과 언어 간 보완을 합쳐 좌표·ID는 유지한다',async()=>{
+ vi.useFakeTimers();
+ const source=new WikimediaSource(vi.fn(async(input:URL|RequestInfo)=>{
+  const url=new URL(String(input));
+  if(url.hostname==='ja.wikipedia.org')return json({query:{pages:[page()]}});
+  if(url.searchParams.has('wbptcontinue'))return json({batchcomplete:true,query:{pages:[{pageid:99,ns:0,title:'English',terms:{label:['합성 박물관']}}]}});
+  return json({continue:{continue:'||',wbptcontinue:99,llcontinue:'99|ko'},query:{pages:[{...page(99),title:'English'}]}});
+ }));
+ const pending=source.fetchRegion(bounds,0,'',new AbortController().signal);await vi.runAllTimersAsync();const result=await pending;
+ expect(result.places).toHaveLength(1);
+ expect(result.places[0]).toMatchObject({name:'합성 박물관',originalName:'合成博物館',providerPlaceId:'wikidata:Q123',sourceUrl:'https://ja.wikipedia.org/?curid=1',coordinate:{latitude:.01,longitude:.01}});
 });
 it('도시·잘못된 좌표를 제외하고 Q ID 또는 문서 ID로 식별한다',()=>{
  const result=normalizeWikipedia({query:{pages:[page(),{...page(2),pageprops:{}},{...page(3),coordinates:[{lat:.01,lon:.01,type:'city'}]},{...page(4),coordinates:[{lat:1,lon:1}]}]}},bounds,'ja');

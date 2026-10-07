@@ -5,7 +5,15 @@ const object = (v: unknown): Record<string, unknown> | null => v !== null && typ
 const qid = (v: unknown): v is string => typeof v === 'string' && /^Q[1-9][0-9]{0,15}$/.test(v);
 const languages = ['ja', 'en'] as const;
 type Language = typeof languages[number];
-interface WikiPlace { place: LandmarkPlace; file: string | null; entity: string | null }
+interface WikiPlace { place: LandmarkPlace; file: string | null; entity: string | null; koreanName: string | null }
+function koreanPlaceName(page: Record<string, unknown>): string | null {
+  const labels = object(page.terms)?.label;
+  const links = Array.isArray(page.langlinks) ? page.langlinks : [];
+  // pageterms may return a language fallback; do not mistake it for Korean.
+  const names = [...(Array.isArray(labels) ? labels : []), ...links.filter(link => object(link)?.lang === 'ko').map(link => object(link)?.title)];
+  for (const name of names) if (typeof name === 'string' && /[가-힣]/u.test(name) && name.trim()) return name.trim().slice(0, 160);
+  return null;
+}
 const broadTypes = new Set(['country','state','adm1st','adm2nd','city','event']);
 const types: Record<string,string> = {landmark:'wiki.landmark',mountain:'wiki.mountain',waterbody:'wiki.waterbody',isle:'wiki.island',railwaystation:'wiki.station',airport:'wiki.airport',edu:'wiki.education'};
 export function wikipediaRegionUrl(bounds: RegionBounds, language: Language) {
@@ -13,7 +21,8 @@ export function wikipediaRegionUrl(bounds: RegionBounds, language: Language) {
   const url = new URL(`https://${language}.wikipedia.org/w/api.php`);
   url.search = new URLSearchParams({action:'query',format:'json',formatversion:'2',origin:'*',generator:'geosearch',
     ggsbbox:`${bounds.north}|${bounds.west}|${bounds.south}|${bounds.east}`,ggslimit:'500',ggsnamespace:'0',ggsprimary:'primary',
-    prop:'coordinates|pageprops|pageimages',coprop:'type',coprimary:'primary',colimit:'max',ppprop:'wikibase_item',piprop:'name',pilicense:'free',pilimit:'max'}).toString();
+    prop:'coordinates|pageprops|pageimages|pageterms|langlinks',coprop:'type',coprimary:'primary',colimit:'max',ppprop:'wikibase_item',piprop:'name',pilicense:'free',pilimit:'max',
+    wbptlanguage:'ko',wbptterms:'label',lllang:'ko',lllimit:'max'}).toString();
   return url;
 }
 export function normalizeWikipedia(body: unknown, bounds: RegionBounds, language: Language): {items:WikiPlace[]; pageCount:number} {
@@ -33,8 +42,9 @@ export function normalizeWikipedia(body: unknown, bounds: RegionBounds, language
     if (!validCoordinate(coordinate) || c.lat < bounds.south || c.lat > bounds.north || c.lon < bounds.west || c.lon > bounds.east || broadTypes.has(String(c.type))) continue;
     const entity = object(page.pageprops)?.wikibase_item;
     const id = qid(entity) ? `wikidata:${entity}` : `wikipedia:${language}:${page.pageid}`;
-    items.push({entity:qid(entity) ? entity : null, file:commonsFile(`File:${typeof page.pageimage === 'string' ? page.pageimage : ''}`),
-      place:{provider:'wikimedia',providerPlaceId:id,name:page.title.trim().slice(0,160),coordinate,categories:[types[String(c.type)] ?? 'wiki.place'],
+    const originalName = page.title.trim().slice(0,160), koreanName = koreanPlaceName(page);
+    items.push({entity:qid(entity) ? entity : null, koreanName, file:commonsFile(`File:${typeof page.pageimage === 'string' ? page.pageimage : ''}`),
+      place:{provider:'wikimedia',providerPlaceId:id,name:koreanName ?? originalName,...(koreanName && koreanName !== originalName ? {originalName} : {}),coordinate,categories:[types[String(c.type)] ?? 'wiki.place'],
         attribution:'Wikipedia · Wikidata',sourceUrl:`https://${language}.wikipedia.org/?curid=${page.pageid}`}});
   }
   return {items,pageCount:query.pages.length};
@@ -88,7 +98,7 @@ export class WikimediaSource {
         if(seen.has(key) || ++pages >= 16) throw new LandmarkFailure('SEARCH_INCOMPLETE');
         seen.add(key);url=new URL(base);
         for(const [k,v] of Object.entries(continuation)) {
-          if(!['continue','cocontinue','picontinue','ppcontinue','ggscontinue'].includes(k) || !['string','number'].includes(typeof v)) throw new LandmarkFailure('RESPONSE_INVALID');
+          if(!['continue','cocontinue','picontinue','ppcontinue','ggscontinue','wbptcontinue','llcontinue'].includes(k) || !['string','number'].includes(typeof v)) throw new LandmarkFailure('RESPONSE_INVALID');
           url.searchParams.set(k,String(v));
         }
       }
@@ -96,7 +106,13 @@ export class WikimediaSource {
       for(const item of normalizeWikipedia({query:{pages:[...merged.values()]}},bounds,language).items) {
         const previous=found.get(item.place.providerPlaceId);
         if(!previous) found.set(item.place.providerPlaceId,item);
-        else if(!previous.file && item.file) previous.file=item.file;
+        else {
+          if(!previous.file && item.file) previous.file=item.file;
+          if(!previous.koreanName && item.koreanName) {
+            previous.koreanName=item.koreanName;
+            previous.place={...previous.place,originalName:previous.place.name,name:item.koreanName};
+          }
+        }
       }
     }
     if(signal.aborted) throw new LandmarkFailure('NETWORK');
