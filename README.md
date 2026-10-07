@@ -2,7 +2,7 @@
 
 **[프로젝트 발표 PPT 보기](https://canva.link/t7edu71wjufm1wp)**
 
-**[서울 여행 시연 데이터 다운로드 (JSON)](https://github.com/diavillager/footprint-globe/raw/refs/heads/main/docs/demo/fully-synthetic.seoul-2026-10.json)**
+**[서울 여행 시연 데이터 다운로드 (JSON)](https://footprint-globe.vercel.app/downloads/fully-synthetic.seoul-2026-10.json)**
 
 2026년 10월 1–7일(KST), 서울 도심 명소 8곳을 둘러보는 완전한 가상 기록입니다(관측 118개, 약 16KB). 다운로드한 파일을 앱에 올리고 전체 기간을 선택한 뒤 장소 매핑을 허용하세요. **원본 경로**의 작은 위치 변화와 재방문 기록이 **장소별 보기**에서 간결한 장소·번호로 묶이는 모습을 비교할 수 있습니다. [시연 일정과 안내](docs/demo/README.md)
 
