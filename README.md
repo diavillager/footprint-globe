@@ -118,6 +118,8 @@ npm run dev
 
 방대한 원본에서 누락 구조를 직접 찾기 어렵다면 [별도 로컬 진단 도구](tools/timeline-audit/README.md)를 사용하세요. `npm run audit:build` 후 `npm run audit:preview`로 실행하고 JSON을 한 번 선택하면 전체 구조 탐색·실제 앱 파서의 채택 건수·미해석 구조를 보고합니다. 장소 매핑은 필요 없습니다. 공유할 때는 원본 값·파일명·임의 필드명을 제외한 `timeline-structure-report.txt`만 사용합니다. 최대 64 MiB이며, 탐색 완료가 모든 형식의 의미 해석이나 위치 정확성 검증을 뜻하지는 않습니다. 기존 샘플 생성 및 지도 화면과 별개로 실행됩니다.
 
+같은 화면의 **JSON·GPX 선택**으로 GPX 1.0/1.1도 로컬 진단할 수 있습니다. 트랙·구간·포인트, 좌표·시각의 유효성, 시각 누락/중복/역순·기록 간격, 선택적 품질 필드와 미해석 확장을 집계하며 `gpx-structure-report.txt`로 저장합니다. 원본 값·namespace URI·임의 요소명은 출력하지 않습니다. 지도에 GPX를 표시하거나 Timeline과 실제 좌표를 비교하는 기능은 아직 아니며, [GPX 진단 명세](specs/2026-10-08-000-gpx-local-audit.md)를 따릅니다.
+
 ### 테스트·시연용 가상 여행
 
 오스트리아·프랑스·이탈리아·일본의 가상 여행 JSON을 생성할 수 있습니다. Node.js 24에서 `node scripts/write-travel-examples.mjs`를 실행한 뒤 `private/travel-demo/`의 파일을 **JSON 올리기**로 선택하세요. 날짜·도시 이동 가정과 장소 수정 방법은 [가상 여행 안내](docs/travel-demo.md)를 참고하세요.
