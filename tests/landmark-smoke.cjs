@@ -72,6 +72,16 @@ let stage = 'startup';
     assert.equal(await page.locator('.diary-card').count(), 0);
     await page.getByRole('dialog', { name: '장소 매핑 안내', exact: true }).waitFor();
    };
+   const showCard = async () => {
+    await page.locator('.landmark-marker').first().waitFor();
+    for (let attempt = 0; attempt < 5 && !(await page.locator('.landmark-marker button[data-index]').count()); attempt++) {
+     const list=page.getByRole('region',{name:'겹친 기록 지점 목록'});
+     if(await list.count()) { await list.locator('li button').first().click(); await page.getByRole('dialog',{name:'기록 상세'}).waitFor(); return; }
+     await page.locator('.landmark-cluster').first().click(); await page.waitForTimeout(450);
+    }
+    await page.locator('.landmark-marker button[data-index]').first().hover();
+    await page.locator('.diary-balloon:visible').first().waitFor();
+   };
    const consent = async () => {
     const mapped = page.getByRole('button', {name:'장소별 보기',exact:true});
     assert.equal(await mapped.isDisabled(), true);
@@ -82,6 +92,7 @@ let stage = 'startup';
      await page.waitForFunction(() => ![...document.querySelectorAll('button')].find(button => button.textContent === '장소별 보기').disabled);
      assert.equal(await page.getByRole('button', {name:'원본 경로',exact:true}).getAttribute('aria-pressed'), 'true');
      await mapped.click();
+     if (!['empty','collision'].includes(mode)) await showCard();
     }
    };
    for (const trip of trips) {
@@ -93,7 +104,7 @@ let stage = 'startup';
     await page.locator('.diary-balloon:visible .diary-card img').first().waitFor();
     assert.equal(await page.locator('.diary-balloon:visible .diary-card img').first().evaluate(img => getComputedStyle(img).objectFit), 'contain');
     await page.locator('.diary-balloon').first().waitFor({ state: 'attached' });
-    await page.locator('.diary-balloon:visible button').first().click();
+    if (!(await page.getByRole('dialog',{name:'기록 상세'}).count())) await page.locator('.diary-balloon:visible button').first().click();
     await page.getByRole('heading', { name: '주변 랜드마크 후보', exact: true }).waitFor();
     assert.equal(await page.getByRole('dialog', {name:'기록 상세'}).evaluate(dialog => { const r = dialog.getBoundingClientRect(); return Math.abs(r.x + r.width / 2 - innerWidth / 2) < 2; }), true);
     await page.screenshot({path:`node_modules/.cache/diary-detail-${stage}.png`});
@@ -110,7 +121,8 @@ let stage = 'startup';
     await page.getByRole('button', {name:'원본 경로',exact:true}).click();
     assert.equal(await page.locator('.diary-card').count(), 0);
     await page.getByRole('button', {name:'장소별 보기',exact:true}).click();
-    await page.locator('.diary-balloon:visible .diary-card').first().waitFor();
+    await showCard();
+    if(await page.getByRole('dialog',{name:'기록 상세'}).count()) await page.getByRole('button',{name:'창 닫기',exact:true}).click();
     await page.getByRole('button', { name: '지우기', exact: true }).click();
     const stopped = requests; await page.waitForTimeout(400); assert.equal(requests, stopped);
    }
@@ -140,6 +152,8 @@ let stage = 'startup';
    await page.getByRole('button', { name: '지우기', exact: true }).click(); if (held) await held();
    mode = 'success'; await page.setViewportSize({ width: 390, height: 844 }); await load(timeline(2)); await consent();
    await page.locator('.diary-balloon:visible .diary-card img').first().waitFor();
+   const mobileCard = await page.locator('.diary-balloon:visible').first().boundingBox();
+   assert.ok(mobileCard.x >= 0 && mobileCard.x + mobileCard.width <= 390 && mobileCard.y >= 0 && mobileCard.y + mobileCard.height <= 844);
    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
    await page.getByRole('button', {name:'장소 매핑 진행 상태',exact:true}).click();
    await page.getByRole('region', {name:'매핑 진행 세부사항'}).waitFor();
@@ -150,7 +164,7 @@ let stage = 'startup';
    assert.ok(Math.abs(ring.y + ring.height / 2 - mobileInfo.y - mobileInfo.height / 2) < 1);
    await page.keyboard.press('Escape');
    await page.screenshot({ path: `node_modules/.cache/diary-${stage}-mobile.png` });
-   await page.locator('.diary-balloon:visible button').first().click();
+   await page.locator('.landmark-marker button[data-index]').first().click();
    await page.getByRole('region', {name:'선택한 장소 상세'}).waitFor();
    assert.equal(await page.getByRole('dialog').evaluate(el => el.scrollWidth > el.clientWidth), false);
    const mobileList = await page.getByRole('complementary', {name:'주변 장소 목록'}).boundingBox();
@@ -169,7 +183,7 @@ let stage = 'startup';
    const toolbar = await page.getByRole('navigation', {name:'발자취 도구'}).boundingBox();
    assert.ok(Math.abs(desktopRing.y - toolbar.y - (toolbar.y + toolbar.height - desktopRing.y - desktopRing.height)) < 1, 'ring has equal top and bottom spacing');
    const canvas = page.locator('.maplibregl-canvas');
-   const cameraShot = () => canvas.screenshot({style: '.diary-balloon, .top-controls { visibility: hidden !important; }'});
+   const cameraShot = () => canvas.screenshot({style: '.landmark-marker, .top-controls { visibility: hidden !important; }'});
    const cameraBefore = await cameraShot();
    await page.getByRole('button', {name:'원본 경로',exact:true}).click();
    await page.waitForTimeout(500);
@@ -187,14 +201,33 @@ let stage = 'startup';
    const overlapping = timeline(2); overlapping.rawSignals[1].position.LatLng = '37°, 127.00001°';
    overlapping.rawSignals[1].position.timestamp = '2040-01-01T03:00:00Z';
    await load(overlapping); await consent();
-   await page.locator('.diary-balloon:visible .landmark-photo img').first().waitFor();
-   assert.equal(await page.locator('.diary-balloon:visible strong').filter({hasText:'사진 없는 앞 지점'}).count(),0);
+   await page.locator('.landmark-cluster[data-count="2"]').waitFor();
+   assert.equal(await page.locator('.landmark-cluster[data-count="2"]').count(), 1);
+   assert.equal(await page.locator('.diary-balloon').count(), 0);
+   for (let i = 0; i < 4 && !(await page.getByRole('region',{name:'겹친 기록 지점 목록'}).count()); i++) {
+    await page.locator('.landmark-cluster').first().click(); await page.waitForTimeout(450);
+   }
+   const overlappingList = page.getByRole('region',{name:'겹친 기록 지점 목록'});
+   assert.equal(await overlappingList.locator('li button').count(), 2);
+   await overlappingList.locator('li button').nth(1).click();
+   await page.getByRole('dialog',{name:'기록 상세'}).locator('.landmark-photo img').waitFor();
+   await page.getByRole('button',{name:'창 닫기',exact:true}).click();
    await page.getByRole('button',{name:'장소 매핑 진행 상태',exact:true}).hover();
    await page.locator('summary').filter({hasText:'사진이 있는 장소 1곳'}).click();
    await page.locator('.photo-places button').click();
    await page.getByRole('dialog',{name:'기록 상세'}).locator('.landmark-photo img').waitFor();
    await page.getByRole('button',{name:'창 닫기',exact:true}).click();
    mode = 'gallery'; await load(timeline(4)); await consent();
+   const beforeZoomRequests = requests;
+   await page.mouse.move(1100,700);
+   for (let i=0;i<7;i++) { await page.locator('.maplibregl-ctrl-zoom-out').click(); await page.waitForTimeout(350); }
+   await page.locator('.landmark-cluster[data-count="4"]').waitFor();
+   assert.equal(await page.locator('.diary-balloon').count(), 0, 'overview leaves the route visible');
+   assert.equal(await page.locator('.landmark-marker button[data-count]').evaluateAll(nodes=>nodes.reduce((n,node)=>n+Number(node.dataset.count),0)),4);
+   await page.screenshot({path:`node_modules/.cache/landmark-overview-${stage}.png`});
+   await page.locator('.landmark-cluster[data-count="4"]').click(); await page.waitForTimeout(500);
+   assert.equal(requests,beforeZoomRequests,'display grouping sends no additional place requests');
+   assert.match(await page.locator('.import-status').textContent(),/관측 4개/);
    for (let i = 0; i < 4; i++) {
     await page.getByRole('button',{name:'장소 매핑 진행 상태',exact:true}).hover();
     await page.locator('summary').filter({hasText:'사진이 있는 장소 4곳'}).click();
@@ -206,6 +239,7 @@ let stage = 'startup';
     await page.getByRole('button',{name:'창 닫기',exact:true}).click();
    }
    mode = 'imagefail'; await load(timeline(2)); await consent();
+   for (const pin of await page.locator('.landmark-marker button[data-index]').all()) { await pin.hover(); await page.waitForTimeout(400); }
    await page.waitForTimeout(1800);
    await page.getByRole('button', {name:'장소 매핑 진행 상태',exact:true}).hover();
    await page.locator('.mapping-progress-detail p').filter({hasText:/사진.*실패 2/}).waitFor();
@@ -214,4 +248,4 @@ let stage = 'startup';
    await context.close(); console.log(stage + ' PASS: automatic diary, four trips, photos, regional reuse, errors, cancellation, mobile');
   }
  } finally { await browser.close(); await dev.close(); await new Promise(resolve => production.httpServer.close(resolve)); }
-})().catch(error => { console.error('Diary smoke failed at ' + stage + ': ' + error.message.replace(/https?:\/\/\S+/g, '[URL]')); process.exitCode = 1; });
+})().catch(error => { console.error('Diary smoke failed at ' + stage + ': ' + error.stack.replace(/https?:\/\/\S+/g, '[URL]')); process.exitCode = 1; });
