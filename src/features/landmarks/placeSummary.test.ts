@@ -23,12 +23,25 @@ it('왕복과 같은 장소 내부 연결을 합쳐도 원본 기록과 재방�
 it('같은 이름과 가까운 좌표라도 다른 장소 ID를 합치지 않는다',()=>{
   expect(fixture(['A','B']).summary.nodes).toHaveLength(2);
 });
-it('미연결/실패 구간을 건너뛴 가상 연결을 만들지 않는다',()=>{
-  const {summary}=fixture(['A',null,'B','C',null,'A']);
-  expect(summary.nodes).toHaveLength(3);expect(summary.edges).toHaveLength(1);
-  expect(summary.edges[0]!.transitions).toEqual([{from:'observation:2',to:'observation:3'}]);
-  expect(fixture([null,null]).summary.nodes).toEqual([]);
+it('미매핑/실패 지점을 경유해 기존 연결을 유지하고 바로 가는 연결을 만들지 않는다',()=>{
+  const {summary,points}=fixture(['A',null,'B','C',null,'A']);
+  expect(summary.nodes).toHaveLength(3);expect(summary.edges).toHaveLength(5);
+  expect(summary.edges.flatMap(edge=>edge.transitions)).toEqual(points.slice(1).map((point,i)=>({from:points[i]!.id,to:point.id})));
+  expect(summary.edges[0]!.to.point).toBe(points[1]);
+  expect(summary.edges[1]!.from.point).toBe(points[1]);
+  expect(summary.edges[3]!.to.point).toBe(points[4]);
+  expect(summary.edges.some(edge=>edge.key==='["A","B"]')).toBe(false);
+  expect(fixture([null,null]).summary.edges).toHaveLength(1);
   expect(fixture(['A','A']).summary.edges).toEqual([]);
+});
+it('시작과 끝의 미매핑 구간, 같은 장소로 돌아오는 중간 경유를 보존한다',()=>{
+  const {summary,points}=fixture([null,'A',null,'A',null]);
+  expect(summary.nodes).toHaveLength(1);
+  expect(summary.edges).toHaveLength(3);
+  expect(summary.edges.reduce((n,edge)=>n+edge.transitions.length,0)).toBe(4);
+  expect(summary.edges[0]!.from.point).toBe(points[0]);
+  expect(summary.edges.at(-1)!.to.point).toBe(points[4]);
+  expect(summary.nodes[0]!.groups).toHaveLength(2);
 });
 it('선택한 재방문 앞뒤만 강조하고 같은 장소의 다른 방문 연결은 강조하지 않는다',()=>{
   const {summary}=fixture(['A','B','C','A','D']);

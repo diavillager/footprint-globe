@@ -18,7 +18,7 @@ export interface PlaceSummary {
   edges: PlaceEdge[];
   byObservation: Map<ObservationId, PlaceNode>;
 }
-/** Display only. Keep episodes intact, and never bridge an unmatched/failed group. */
+/** Display only. Merge mapped points, but retain unmatched points as route waypoints. */
 export function summarizePlaces(groups: readonly ObservationGroup[], candidate: (group: ObservationGroup) => LandmarkCandidate | null): PlaceSummary {
   const nodes = new Map<string, PlaceNode>(), distances = new Map<string, number>();
   const byObservation = new Map<ObservationId, PlaceNode>();
@@ -32,18 +32,17 @@ export function summarizePlaces(groups: readonly ObservationGroup[], candidate: 
     node.groups.push(group); byObservation.set(group.representative.id,node);
   }
   const edges = new Map<string, PlaceEdge>();
-  let previous: ObservationGroup | null = null;
-  for (const group of groups) {
-    const node = byObservation.get(group.representative.id);
-    if (!node) { previous = null; continue; }
-    const from = previous && byObservation.get(previous.representative.id);
-    if (previous && from && from !== node) {
+  const route = groups.map(group => ({group, node:byObservation.get(group.representative.id) ?? {
+    placeId: JSON.stringify(['unmapped',group.groupId]), point:group.representative, groups:[group],
+  }}));
+  for (let index = 1; index < route.length; index++) {
+    const previous = route[index-1]!, {group,node} = route[index]!, from = previous.node;
+    if (from !== node) {
       const key = JSON.stringify([from.placeId,node.placeId].sort());
       let edge = edges.get(key);
       if (!edge) { edge = {key,from,to:node,transitions:[]}; edges.set(key,edge); }
-      edge.transitions.push({from:previous.representative.id,to:group.representative.id});
+      edge.transitions.push({from:previous.group.representative.id,to:group.representative.id});
     }
-    previous = group;
   }
   return {nodes:[...nodes.values()],edges:[...edges.values()],byObservation};
 }

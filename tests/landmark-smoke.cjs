@@ -220,6 +220,7 @@ let stage = 'startup';
    const rail=page.getByRole('navigation',{name:'장소 순서',exact:true});await rail.waitFor();
    const railButtons=rail.locator('li button'), scroller=rail.locator('.landmark-rail-scroll');
    assert.equal(await railButtons.count(),11,'unmatched original observation is excluded; revisit remains');
+   await page.locator('.summary-legend').filter({hasText:'장소 10곳 · 연결 11개'}).waitFor(); // Unmatched leading point still connects to the first mapped place.
    assert.deepEqual(await railButtons.allTextContents(),Array.from({length:11},(_,i)=>String(i+1)));
    assert.equal(await scroller.evaluate(el=>el.scrollLeft),0);
    assert.equal(await rail.locator('[aria-pressed=true]').count(),0);
@@ -297,7 +298,7 @@ let stage = 'startup';
    const repeats=timeline(18);
    repeats.rawSignals.forEach((signal,i)=>{signal.position.LatLng=`${37+(i%3)*.01}°, 127°`;signal.position.timestamp=new Date(Date.UTC(2040,0,1)+i*10_800_000).toISOString();});
    await load(repeats);await consent();
-   await page.locator('.summary-legend').filter({hasText:'장소 3곳 · 요약 연결 3개'}).waitFor();
+   await page.locator('.summary-legend').filter({hasText:'장소 3곳 · 연결 3개'}).waitFor();
    assert.equal(await railButtons.count(),18,'all revisit numbers remain');
    await railButtons.nth(12).click();await page.waitForTimeout(1700);
    const selectedCard=page.locator('.diary-balloon:visible').filter({has:page.locator('.diary-number',{hasText:/^13$/})});

@@ -89,8 +89,8 @@ export default function MapTilerGlobe(props: Props) {
         instance.addSource('observations', { type: 'geojson', data: mapPoints(latest.current.points), maxzoom: 20 });
         instance.addSource('connections', { type: 'geojson', data: mapConnections(latest.current.connections, false, 0), maxzoom: 20, tolerance: 0 });
         instance.addLayer({ id: 'trace-solid', type: 'line', source: 'connections', filter: ['!=', ['get', 'summary'], true], paint: { 'line-color': '#087e78', 'line-width': 3 } });
-        instance.addLayer({ id: 'place-summary', type:'line', source:'connections', filter:['==',['get','summary'],true], paint:{'line-color':'#087e78','line-width':3,'line-dasharray':[4,2],'line-opacity':.9} });
-        instance.addLayer({ id:'place-summary-selected',type:'line',source:'connections',filter:['==',['get','highlighted'],true],paint:{'line-color':'#c15c15','line-width':4,'line-dasharray':[3,1.5]} });
+        instance.addLayer({ id: 'place-summary', type:'line', source:'connections', filter:['==',['get','summary'],true], paint:{'line-color':'#087e78','line-width':3,'line-opacity':.9} });
+        instance.addLayer({ id:'place-summary-selected',type:'line',source:'connections',filter:['==',['get','highlighted'],true],paint:{'line-color':'#c15c15','line-width':4} });
         instance.addLayer({ id: 'observations', type: 'circle', source: 'observations', paint: { 'circle-radius': 4, 'circle-color': '#087e78', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1 } });
         instance.addLayer({ id: 'selected', type: 'circle', source: 'observations', filter: ['==', ['get', 'observationId'], ''], paint: { 'circle-radius': 9, 'circle-color': '#ffb74d', 'circle-opacity': .4, 'circle-stroke-color': '#ac4200', 'circle-stroke-width': 3 } });
         instance.on('movestart', event => { if (event.originalEvent) latest.current.onMapInteract(); });
