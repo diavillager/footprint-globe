@@ -1,5 +1,7 @@
 import type { FeatureCollection, Point, LineString } from 'geojson';
-import type { Observation } from '../../domain/timeline';
+import type { PlaceSummary } from '../landmarks/placeSummary';
+import { connectAll } from './analysis';
+import type { Observation, ObservationId } from '../../domain/timeline';
 import type { Connection } from './analysis';
 import { arcVertices } from './geometry';
 
@@ -27,4 +29,35 @@ export function mapConnections(connections: readonly Connection[], differentiate
     }
     return { type: 'Feature', properties: { gap: differentiated && link.seconds > threshold }, geometry: { type: 'LineString', coordinates } };
   }) };
+}
+
+export function summaryLines(summary: PlaceSummary, selected: ObservationId | null) {
+  const data = mapConnections(summary.edges.map(edge => connectAll([edge.from.point,edge.to.point])[0]!),false,0);
+  data.features.forEach((feature,index) => {
+    const edge = summary.edges[index]!;
+    feature.properties = {summary:true, edgeKey:edge.key, count:edge.transitions.length,
+      highlighted:selected !== null && edge.transitions.some(pair => pair.from === selected || pair.to === selected)};
+  });
+  return data;
+}
+
+/** Inferred gap geometry is independent of recorded/summary edges and mapping input. */
+export function gapLines(connections: readonly Connection[], summary: PlaceSummary | null, selected: ObservationId | null) {
+  const anchors = new Map<ObservationId, { point: Observation; selected: boolean }>();
+  for (const node of summary ? [...summary.nodes, ...summary.waypoints] : []) {
+    for (const group of node.groups) for (const id of group.sourceObservationIds) {
+      anchors.set(id, { point: node.point, selected: group.representative.id === selected });
+    }
+  }
+  const projected = connections.flatMap(link => {
+    const from = anchors.get(link.from.id), to = anchors.get(link.to.id);
+    if (summary && (!from || !to || from.point.id === to.point.id)) return [];
+    return [{ ...link, from: from?.point ?? link.from, to: to?.point ?? link.to,
+      highlighted: Boolean(summary && (from?.selected || to?.selected)) }];
+  });
+  const data = mapConnections(projected, true, 0);
+  data.features.forEach((feature, index) => {
+    feature.properties = { gap: true, highlighted: projected[index]!.highlighted };
+  });
+  return data;
 }

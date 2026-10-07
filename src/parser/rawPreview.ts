@@ -4,7 +4,7 @@ export const PREVIEW_LIMITS = { bytes: 64 * 1024 * 1024, records: 100000 } as co
 const object = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
 const own = (v: object, k: string) => Object.hasOwn(v, k);
 
-function timestamp(value: unknown) {
+export function rawTimestamp(value: unknown) {
   if (typeof value !== 'string') return null;
   const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$/.exec(value);
   if (!m) return null;
@@ -24,7 +24,7 @@ function timestamp(value: unknown) {
   return { ns, instant: { epochMs: wholeMs + fractionNs / 1000000, sourceText: value } };
 }
 
-function coordinate(value: unknown) {
+export function rawCoordinate(value: unknown) {
   if (typeof value !== 'string') return null;
   const m = /^(geo:)?([+-]?\d{1,3}(?:\.\d{1,9})?)(°?),( *)([+-]?\d{1,3}(?:\.\d{1,9})?)(°?)$/.exec(value);
   if (!m || m[3] !== m[6] || (m[1] && m[3])) return null;
@@ -32,11 +32,16 @@ function coordinate(value: unknown) {
   return Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 ? { latitude, longitude } : null;
 }
 
-/** Preview extractor, not the sample sanitizer. Copies only validated coordinates and timestamps. */
+/** Preview extractor, not the sample sanitizer. Copies validated coordinates, timestamps and optional reported accuracy. */
 export function parseRawPreview(text: string, datasetId: DatasetId): ParseResult {
   if (new TextEncoder().encode(text).length > PREVIEW_LIMITS.bytes) return { ok: false, code: 'INPUT_LIMIT' };
   let root: unknown;
   try { root = JSON.parse(text.replace(/^\uFEFF/, '')); } catch { return { ok: false, code: 'INVALID_JSON' }; }
+  return parseRawValue(root, datasetId);
+}
+
+/** Internal parsed-value entry for the offline audit; callers enforce the input byte limit. */
+export function parseRawValue(root: unknown, datasetId: DatasetId): ParseResult {
   if (!object(root) || !Array.isArray(root.rawSignals) || own(root, 'semanticSegments') || own(root, 'timelineObjects')) return { ok: false, code: 'UNSUPPORTED_FORMAT' };
   if (root.rawSignals.length > PREVIEW_LIMITS.records) return { ok: false, code: 'INPUT_LIMIT' };
   const counts: ImportCounts = { input: root.rawSignals.length, accepted: 0, ignoredSignals: 0, invalidPositions: 0, ignoredRootFields: Object.keys(root).length - 1 };
@@ -45,10 +50,11 @@ export function parseRawPreview(text: string, datasetId: DatasetId): ParseResult
     if (!object(record) || !own(record, 'position')) { counts.ignoredSignals++; continue; }
     const position = record.position;
     if (!object(position) || Number(own(position, 'LatLng')) + Number(own(position, 'latLng')) !== 1) { counts.invalidPositions++; continue; }
-    const coord = coordinate(own(position, 'LatLng') ? position.LatLng : position.latLng);
-    const time = timestamp(position.timestamp);
+    const coord = rawCoordinate(own(position, 'LatLng') ? position.LatLng : position.latLng);
+    const time = rawTimestamp(position.timestamp);
     if (!coord || !time) { counts.invalidPositions++; continue; }
-    entries.push({ ns: time.ns, point: { id: `observation:${datasetId}:${entries.length}`, coordinate: coord, time: time.instant } });
+    entries.push({ ns: time.ns, point: { id: `observation:${datasetId}:${entries.length}`, coordinate: coord, time: time.instant,
+      ...(typeof position.accuracyMeters === 'number' && Number.isFinite(position.accuracyMeters) && position.accuracyMeters >= 0 ? { accuracyMeters: position.accuracyMeters } : {}) } });
   }
   // Exact fractional timestamps order observations; equal instants keep source order.
   entries.sort((a, b) => a.ns < b.ns ? -1 : a.ns > b.ns ? 1 : 0);

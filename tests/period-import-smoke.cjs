@@ -1,0 +1,66 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {chromium}=require('playwright');
+const {mkdir}=require('node:fs/promises');
+(async()=>{
+ const {build,preview}=await import('vite');
+ const outDir='node_modules/.cache/period-import-dist';
+ await build({define:{__MAPTILER_KEY__:JSON.stringify('synthetic-key'),__GEOAPIFY_KEY__:JSON.stringify('')},build:{outDir},logLevel:'error'});
+ const server=await preview({build:{outDir},preview:{port:0}}),origin=server.resolvedUrls.local[0];
+ const browser=await chromium.launch({channel:'msedge',headless:true,args:['--enable-unsafe-swiftshader']});
+ try {
+  const context=await browser.newContext({viewport:{width:1440,height:1080}}),page=await context.newPage();
+  let queries=0,errors=0,leak=false;const boxes=[];
+  await context.route('**/*',route=>{
+   const url=new URL(route.request().url());if(url.origin===new URL(origin).origin)return route.continue();
+   if(url.hostname==='api.maptiler.com')return route.fulfill(url.pathname.endsWith('logo.svg')?{contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg"/>'}:{json:{version:8,sources:{},layers:[{id:'bg',type:'background',paint:{'background-color':'#eef3ee'}}]}});
+   assert.ok(['ja.wikipedia.org','en.wikipedia.org'].includes(url.hostname),'only mocked place requests');queries++;
+   boxes.push(url.searchParams.get('ggsbbox'));return route.fulfill({json:{batchcomplete:true,query:{pages:[]}}});
+  });
+  page.on('pageerror',()=>errors++);page.on('console',m=>{if(/PRIVATE_CANARY/.test(m.text()))leak=true;});
+  await page.goto(origin);await page.getByText('상세 지도 준비 완료',{exact:false}).waitFor({state:'attached'});
+  const surface=page.locator('.map-surface'), upload=async(value,name='PRIVATE_CANARY.json')=>{
+   await page.getByLabel('JSON·GPX 올리기',{exact:true}).setInputFiles({name,mimeType:name.endsWith('gpx')?'application/gpx+xml':'application/json',buffer:Buffer.from(typeof value==='string'?value:JSON.stringify(value))});
+   await page.getByRole('dialog',{name:'등록할 기간 선택',exact:true}).waitFor();
+  };
+  const raw=(time,lat=37,lon=127)=>({position:{LatLng:`${lat},${lon}`,timestamp:time}});
+  const mixed={rawSignals:[raw('2040-01-01T00:00:00Z',10,10),raw('2040-02-02T00:00:00Z'),raw('2040-02-02T00:01:00Z'),raw('2040-02-02T00:02:00Z'),raw('2040-02-02T00:03:00Z'),raw('2040-02-02T00:04:00Z'),raw('2040-03-31T00:00:00Z',20,20)],semanticSegments:[{startTime:'2040-02-02T00:01:00Z',endTime:'2040-02-02T00:03:00Z',timelinePath:[{point:'37,127',time:'2040-02-02T00:01:00Z'},{point:'37,127',time:'2040-02-02T00:03:00Z'}]}]};
+  await upload(mixed);
+  assert.equal(await surface.getAttribute('data-visible-points'),'0');assert.equal(queries,0);
+  const calendar=page.getByRole('dialog',{name:'등록할 기간 선택'});
+  assert.match(await calendar.textContent(),/2040-01-01.*2040-03-31/s);
+  assert.equal(await page.getByRole('button',{name:'이 기간으로 계속'}).isDisabled(),true);
+  await page.getByLabel('시작일',{exact:true}).fill('2040-02-02');await page.getByLabel('종료일',{exact:true}).fill('2040-02-02');
+  await page.getByRole('button',{name:'다음 달',exact:true}).click();
+  await mkdir('node_modules/.cache/period-qa',{recursive:true});await page.screenshot({path:'node_modules/.cache/period-qa/calendar.png'});
+  await page.getByRole('button',{name:'이 기간으로 계속',exact:true}).click();
+  assert.equal(await surface.getAttribute('data-visible-points'),'0');assert.equal(queries,0);
+  await page.getByRole('button',{name:'원본만 보기',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('.map-surface').dataset.visiblePoints==='4');
+  assert.equal(await surface.getAttribute('data-visible-connections'),'3');assert.equal(queries,0);
+  await page.getByRole('button',{name:'위치 기록',exact:true}).click();assert.equal(await page.locator('.observation-list li').count(),7);
+  assert.match(await page.getByRole('dialog').textContent(),/Timeline 상세 경로/);await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'KST',exact:true}).click();assert.equal(await surface.getAttribute('data-visible-points'),'4');
+  await page.getByRole('button',{name:'기간 다시 선택',exact:true}).click();assert.equal(await surface.getAttribute('data-visible-points'),'0');
+  await page.getByLabel('시작일',{exact:true}).fill('2040-02-02');await page.getByLabel('종료일',{exact:true}).fill('2040-02-02');await page.getByRole('button',{name:'이 기간으로 계속'}).click();
+  await page.getByRole('button',{name:'허용하고 장소 매핑',exact:true}).click();
+  await page.waitForFunction(()=>![...document.querySelectorAll('button')].find(b=>b.textContent==='장소별 보기').disabled);
+  assert.ok(queries>0);assert.ok(boxes.every(box=>{const [north,west,south,east]=box.split('|').map(Number);return south>36 && north<38 && west>126 && east<128;}),'only selected-period region bounds queried');
+  let priorQueries=queries;
+  let gpxIndex=0;const point=(time)=>`<trkpt lat="37" lon="${127+gpxIndex++*.003}"><time>${time}</time></trkpt>`;
+  const gpx=`<gpx xmlns="http://www.topografix.com/GPX/1/0" version="1.0"><trk><trkseg>${point('2040-01-01T14:59:59Z')+point('2040-01-01T15:00:00Z')+point('2040-01-01T15:31:00Z')}</trkseg><trkseg>${point('2040-01-01T15:31:01Z')+point('2040-01-01T15:31:02Z')}</trkseg></trk></gpx>`;
+  await upload(gpx,'PRIVATE_CANARY.gpx');
+  await page.getByRole('button',{name:'전체 기간',exact:true}).click();await page.getByRole('button',{name:'이 기간으로 계속'}).click();await page.getByRole('button',{name:'원본만 보기',exact:true}).click();
+  assert.equal(await surface.getAttribute('data-visible-points'),'5');assert.equal(await surface.getAttribute('data-visible-connections'),'1');assert.equal(await surface.getAttribute('data-visible-gaps'),'2');assert.equal(queries,priorQueries);
+  await page.waitForTimeout(500);await page.screenshot({path:'node_modules/.cache/period-qa/gpx-gaps.png'});
+  await page.getByRole('button',{name:'UTC',exact:true}).click();assert.equal(await surface.getAttribute('data-visible-connections'),'1','display timezone does not alter import-day membership');
+  await page.getByRole('button',{name:/^위치 검사/}).click();await page.getByRole('button',{name:'현재 지점으로 장소 매핑 안내 열기'}).click();await page.getByRole('button',{name:'허용하고 장소 매핑',exact:true}).click();
+  await page.waitForFunction(()=>![...document.querySelectorAll('button')].find(b=>b.textContent==='장소별 보기').disabled);await page.getByRole('button',{name:'장소별 보기',exact:true}).click();assert.equal(await surface.getAttribute('data-visible-gaps'),'2');priorQueries=queries;
+  await upload(mixed);await page.keyboard.press('Escape');assert.equal(await surface.getAttribute('data-visible-points'),'0');assert.equal(queries,priorQueries);
+  await page.setViewportSize({width:390,height:844});await upload(gpx,'PRIVATE_CANARY.gpx');await page.screenshot({path:'node_modules/.cache/period-qa/mobile.png'});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.keyboard.press('Escape');assert.equal(await page.getByRole('button',{name:'위치 기록',exact:true}).isDisabled(),true);
+  assert.equal(await page.evaluate(()=>localStorage.length+sessionStorage.length),0);assert.equal(errors,0);assert.equal(leak,false);
+  await context.close();console.log('PASS: calendar staging, mixed-source representative route, date filter, consent gate, selected region mapping, GPX gaps/segments/days, cancel, timezone, responsive layout');
+ } finally {await browser.close();await new Promise(resolve=>server.httpServer.close(resolve));}
+})().catch(e=>{console.error(e);process.exitCode=1;});

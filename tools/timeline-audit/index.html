@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; worker-src 'self'; connect-src 'none'; img-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Timeline·GPX 로컬 진단</title>
+  <script type="module" src="./ui.ts"></script>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">FOOTPRINT · 로컬 진단</p>
+    <h1>파일 한 번으로 구조와 사용 범위를 확인하세요</h1>
+    <p>Timeline JSON은 앱이 채택할 관측과 사용하지 못한 구조를, GPX는 트랙·구간과 좌표·시각의 유효성을 검사합니다. 원본을 직접 열어 누락을 찾으실 필요는 없습니다.</p>
+    <section class="card">
+      <h2>1. Timeline JSON 또는 GPX 선택</h2>
+      <p>파일당 최대 64 MiB. 한 번에 한 파일을 검사합니다. GPX는 UTF-8의 표준 1.0·1.1 구조를 진단하며, 지도 표시나 Timeline과의 실제 비교는 수행하지 않습니다. KML은 지원하지 않습니다.</p>
+      <label class="file">JSON·GPX 선택<input id="source" type="file" accept=".json,.gpx,application/json,application/gpx+xml" aria-label="JSON·GPX 선택"></label>
+      <button id="cancel" disabled>검사 취소</button><button id="clear">지우기</button>
+      <p id="status" role="status" aria-live="polite">검사할 JSON 또는 GPX를 선택하세요.</p>
+    </section>
+    <section class="card">
+      <h2>2. 공유용 진단 보고서 저장</h2>
+      <p>아래 보고서는 원본 값·파일명·임의 필드명을 포함하지 않습니다. 저장한 <strong>timeline-structure-report.txt</strong> 또는 <strong>gpx-structure-report.txt</strong>만 전달하시면 됩니다. 원본이나 가상 샘플은 보내지 않으셔도 됩니다.</p>
+      <button id="save" disabled>공유용 진단 보고서 저장</button>
+      <label for="report" class="report-label">진단 보고서 · 원본 내용 없음</label>
+      <textarea id="report" readonly spellcheck="false" aria-label="진단 보고서"></textarea>
+    </section>
+    <aside>
+      <p>파일은 이 탭과 로컬 작업 스레드의 메모리에서만 처리합니다. 외부 서비스 요청·자동 업로드·브라우저 저장소 저장이 없습니다. 지우기·새로고침·탭 종료 시 폐기합니다.</p>
+      <p>모든 항목을 탐색해도 모든 형식의 의미를 알 수 있는 것은 아닙니다. 미해석 구조와 보고서 상세 한도를 별도로 표시하며, 취소·실패는 완료로 표시하지 않습니다. 구조·건수 자체도 정보이므로 완전한 익명화를 보장하지 않습니다.</p>
+    </aside>
+  </main>
+</body>
+</html>
