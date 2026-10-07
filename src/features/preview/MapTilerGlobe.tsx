@@ -214,7 +214,7 @@ export default function MapTilerGlobe(props: Props) {
   }, [ready, diaryHosts]);
   const selected = props.selectedObservation;
   const selectedIndex = selected ? props.candidates.findIndex(point => point.id === selected.id) : -1;
-  return <div className="map-surface">
+  return <div className="map-surface" data-visible-points={props.points.length} data-visible-connections={props.connections.length}>
     {selected && props.showPointPopup && createPortal(<div role="dialog" aria-label="포인트 정보" onKeyDown={event => { if (event.key === 'Escape') props.onClose(); }}>
       <button className="popup-close" aria-label="말풍선 닫기" onClick={props.onClose}>×</button>
       <h3>관측 {props.originalPoints.indexOf(selected) + 1}</h3>

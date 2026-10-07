@@ -2,6 +2,8 @@
 // Synthetic files and mocked providers only; no live API traffic.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
+async function preparePeriod(page) { await page.locator('dialog[open]').waitFor(); if(await page.getByRole('dialog',{name:'등록할 기간 선택',exact:true}).count()) {await page.getByRole('button',{name:'전체 기간',exact:true}).click();await page.getByRole('button',{name:'이 기간으로 계속',exact:true}).click();} }
+
 let stage = 'startup';
 (async () => {
  const { createServer, preview, build } = await import('vite');
@@ -67,16 +69,16 @@ let stage = 'startup';
      return [{id:1000+i,properties:{place_id:id,name,categories:['entertainment.museum']},geometry:{type:'Point',coordinates}},
       {id:2000+i,properties:{place_id:'far-'+i,name:'더 먼 명소',categories:['tourism.sights']},geometry:{type:'Point',coordinates:[coordinates[0],coordinates[1]+.001]}}];
     });
-    await page.getByLabel('JSON 올리기', { exact: true }).setInputFiles({ name: 'CANARY.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(timeline)) });
+    await page.getByLabel('JSON·GPX 올리기', { exact: true }).setInputFiles({ name: 'CANARY.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(timeline)) });
     await page.locator('.import-status').filter({ hasText: `관측 ${timeline.rawSignals.length.toLocaleString()}개` }).waitFor();
     assert.equal(await page.locator('.travel-diary').count(), 0);
     assert.equal(await page.locator('.diary-card').count(), 0);
-    await page.getByRole('dialog', { name: '장소 매핑 안내', exact: true }).waitFor();
+    await page.getByRole('dialog', { name: '등록할 기간 선택', exact: true }).waitFor();
    };
    const consent = async () => {
     const mapped = page.getByRole('button', {name:'장소별 보기',exact:true});
     assert.equal(await mapped.isDisabled(), true);
-    await page.getByRole('button', { name: '허용하고 장소 매핑', exact: true }).click();
+    await preparePeriod(page); await page.getByRole('button', { name: '허용하고 장소 매핑', exact: true }).click();
     assert.equal(await page.getByRole('button', {name:'원본 경로',exact:true}).getAttribute('aria-pressed'), 'true');
     assert.equal(await mapped.isDisabled(), true);
     if (!['auth','rate','offline','hold'].includes(mode)) {
@@ -332,7 +334,7 @@ let stage = 'startup';
    await page.getByRole('button',{name:'원본 경로',exact:true}).click();await page.waitForTimeout(400);
    assert.ok(!(await railCamera()).equals(simplified),'raw path still displays original noisy geometry');
    await page.screenshot({path:`node_modules/.cache/waypoints-original-${stage}.png`});
-   await page.locator('.import-status').filter({hasText:'관측 180개 · 연결 179개'}).waitFor();
+   await page.locator('.import-status').filter({hasText:'관측 180개 · 대표 경로 180개 · 연결 179개'}).waitFor();
    await page.getByRole('button',{name:'장소별 보기',exact:true}).click();await page.waitForTimeout(400);
    assert.ok((await railCamera()).equals(simplified),'same camera and display groups after raw/mapped round trip');
    assert.equal(requests,requestsAfterMapping,'display grouping makes no API requests');

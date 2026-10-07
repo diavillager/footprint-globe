@@ -2,6 +2,8 @@
 // Synthetic-only app regression. Map resources are mocked; no external network.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
+async function preparePeriod(page) { if(await page.getByRole('dialog',{name:'등록할 기간 선택',exact:true}).count()) {await page.getByRole('button',{name:'전체 기간',exact:true}).click();await page.getByRole('button',{name:'이 기간으로 계속',exact:true}).click();} }
+
 let stage = 'startup';
 (async () => {
   const { createServer, preview, build } = await import('vite');
@@ -32,8 +34,8 @@ let stage = 'startup';
       assert.equal(await page.getByRole('combobox', { name: '지도 표시' }).count(), 0);
       assert.equal(await page.getByRole('radio').count(), 0);
       const signals = Array.from({length: 10123}, (_, i) => ({ position: { LatLng: '37.5665°, 126.978°', timestamp: new Date(Date.UTC(2040,0,1)+i*1000).toISOString() } }));
-      await page.getByLabel('JSON 올리기', {exact:true}).setInputFiles({name:'CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({rawSignals:signals}))});
-      await page.locator('.import-status').filter({hasText:'10,123'}).waitFor(); console.log(stage, 'imported'); await page.getByRole('button',{name:'원본만 보기',exact:true}).click();
+      await page.getByLabel('JSON·GPX 올리기', {exact:true}).setInputFiles({name:'CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({rawSignals:signals}))});
+      await page.locator('.import-status').filter({hasText:'10,123'}).waitFor(); console.log(stage, 'imported'); await preparePeriod(page); await page.getByRole('button',{name:'원본만 보기',exact:true}).click();
       assert.equal(await page.evaluate(()=>document.documentElement.scrollHeight>innerHeight),false);
       assert.equal(await page.getByRole('button',{name:'합성 예제로 체험'}).count(),0);
       for(const name of ['위치 기록','기록 분포']) {
@@ -62,12 +64,12 @@ let stage = 'startup';
       await page.getByRole('button',{name:'말풍선 닫기',exact:true}).click();
       assert.equal(await page.getByRole('dialog').count(),0);
       assert.equal(await page.evaluate(()=>localStorage.length+sessionStorage.length),0);
-      await page.getByLabel('JSON 올리기',{exact:true}).setInputFiles({name:'CANARY.json',mimeType:'application/json',buffer:Buffer.from('{CANARY')});
+      await page.getByLabel('JSON·GPX 올리기',{exact:true}).setInputFiles({name:'CANARY.json',mimeType:'application/json',buffer:Buffer.from('{CANARY')});
       await page.locator('.import-status').filter({hasText:'INVALID_JSON'}).waitFor();
       assert.doesNotMatch(await page.locator('main').textContent(),/CANARY/);
-      await page.getByLabel('JSON 올리기',{exact:true}).setInputFiles({name:'CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({rawSignals:signals.slice(0,3)}))});
+      await page.getByLabel('JSON·GPX 올리기',{exact:true}).setInputFiles({name:'CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({rawSignals:signals.slice(0,3)}))});
       await page.locator('.import-status').filter({hasText:'관측 3개'}).waitFor();
-      await page.getByRole('button',{name:'원본만 보기',exact:true}).click();
+      await preparePeriod(page); await page.getByRole('button',{name:'원본만 보기',exact:true}).click();
       await page.getByRole('button',{name:'위치 기록',exact:true}).click();
       await page.locator('.observation-list button').first().click();
       await page.getByRole('button',{name:'말풍선 닫기',exact:true}).click();
@@ -85,15 +87,16 @@ let stage = 'startup';
       assert.equal(errors,0);
       stage += '-display-recovery';
       const oversized = Array.from({length:23000},(_,i)=>({position:{LatLng:i%2?'0°, 180°':'0°, 0°',timestamp:new Date(Date.UTC(2040,0,1)+i*1000).toISOString()}}));
-      await page.getByLabel('JSON 올리기',{exact:true}).setInputFiles({name:'CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({rawSignals:oversized}))});
+      await page.getByLabel('JSON·GPX 올리기',{exact:true}).setInputFiles({name:'CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({rawSignals:oversized}))});
+      await page.getByRole('dialog',{name:'등록할 기간 선택',exact:true}).waitFor();
+      await preparePeriod(page); await page.getByRole('button',{name:'원본만 보기',exact:true}).click();
       await page.getByRole('alert').filter({hasText:'DISPLAY_UNAVAILABLE'}).waitFor();
-      await page.getByRole('button',{name:'원본만 보기',exact:true}).click();
       await page.getByRole('button',{name:'지우기',exact:true}).click();
       await page.getByText('상세 지도 준비 완료',{exact:false}).waitFor({state:'attached'});
       assert.equal(await page.getByRole('alert').count(),0);
-      await page.getByLabel('JSON 올리기',{exact:true}).setInputFiles({name:'CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({rawSignals:signals.slice(0,3)}))});
+      await page.getByLabel('JSON·GPX 올리기',{exact:true}).setInputFiles({name:'CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({rawSignals:signals.slice(0,3)}))});
       await page.locator('.import-status').filter({hasText:'관측 3개'}).waitFor();
-      await page.getByRole('button',{name:'원본만 보기',exact:true}).click();
+      await preparePeriod(page); await page.getByRole('button',{name:'원본만 보기',exact:true}).click();
       assert.equal(await page.getByRole('alert').count(),0);
       assert.ok(errors<=1); assert.equal(leaked,false); assert.equal(unexpected,0);
       await context.close();

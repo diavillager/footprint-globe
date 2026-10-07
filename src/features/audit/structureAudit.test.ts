@@ -26,12 +26,26 @@ describe('local whole-structure audit', () => {
   });
 
   it('does not treat sample-tool support as app support', () => {
-    for (const root of [{ semanticSegments: [{ visit: {} }] }, { rawSignals: [{ position }], timelineObjects: [] }, [{ position }]]) {
+    for (const root of [{ timelineObjects: [{ placeVisit: {} }] }, { rawSignals: [{ position }], timelineObjects: [] }, [{ position }]]) {
       const report = scan(root);
       expect(report.status).toBe('complete');
       expect(report.app).toEqual({ checked: true, ok: false, code: 'UNSUPPORTED_FORMAT' });
       expect(formatAuditReport(report)).toContain('0건으로 해석하지 마세요');
     }
+  });
+
+  it('reports mixed route adoption and recognized visit fields without exposing their values', () => {
+    const report = scan({ rawSignals: [{ position }], semanticSegments: [{
+      startTime: position.timestamp, endTime: '2040-01-01T00:01:00Z',
+      timelinePath: [{ point: position.LatLng, time: position.timestamp }, { point: '0,0.001', durationMinutesOffset: 1 }],
+      visit: { topCandidate: { placeLocation: { latLng: position.LatLng } } },
+    }] });
+    expect(report.app.counts).toMatchObject({ input: 3, accepted: 3, invalidPositions: 0 });
+    for (const path of ['$.semanticSegments[].timelinePath[].point', '$.semanticSegments[].timelinePath[].durationMinutesOffset', '$.semanticSegments[].visit.topCandidate.placeLocation.latLng']) {
+      expect(report.paths.find(p => p.path === path)?.parserReadable).toBe(true);
+    }
+    expect(formatAuditReport(report)).not.toContain(position.timestamp);
+    expect(formatAuditReport(report)).not.toContain(position.LatLng);
   });
 
   it('visits beyond old node limits and still reaches late siblings', () => {

@@ -1,6 +1,7 @@
 import { SaxesParser, type SaxesTagNS } from 'saxes';
 import { rawTimestamp } from '../../parser/rawPreview';
 import { AUDIT_DETAIL_LIMITS } from './structureAudit';
+import type { Coordinate } from '../../domain/timeline';
 
 const namespaces = ['http://www.topografix.com/GPX/1/0', 'http://www.topografix.com/GPX/1/1'];
 const labels = new Set(['gpx','metadata','name','desc','author','email','link','text','type','copyright','year','license','time','keywords','bounds',
@@ -34,14 +35,15 @@ export function emptyGpxAudit():GpxReport {
 }
 const decimal = (value:string) => /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value.trim()) && Number.isFinite(Number(value));
 const attr = (tag:SaxesTagNS, name:string) => Object.values(tag.attributes).find(a=>a.uri==='' && a.local===name)?.value;
-interface Point { kind:PointKind; coordinates:boolean; fields:Map<string,{count:number;text:string}> }
-interface Frame { local:string; uri:string; path:string; standard:boolean; context:string; extension:boolean; children:number; text:string; textOverflow:boolean; point?:Point; previous?:bigint }
+interface Point { kind:PointKind; coordinates:boolean; coordinate:Coordinate; fields:Map<string,{count:number;text:string}> }
+interface Frame { local:string; uri:string; path:string; standard:boolean; context:string; extension:boolean; children:number; text:string; textOverflow:boolean; point?:Point; previous?:bigint; segment:number }
+export interface GpxPointEvent { kind:PointKind; segment:number; coordinate:Coordinate; time:ReturnType<typeof rawTimestamp>; valid:boolean }
 
-/** Chunked SAX traversal. Only the report may leave this module; no XML values in it. */
-export function createGpxAudit() {
+/** Audit callers omit onPoint. The app importer may consume validated values locally, never in reports. */
+export function createGpxAudit(onPoint?:(point:GpxPointEvent)=>void) {
   const report=emptyGpxAudit(), parser=new SaxesParser({xmlns:true,position:false});
   const stack:Frame[]=[], paths=new Map<string,PathCount>(), aliases=new Map<string,string>();
-  let rootSeen=false, rootNamespace='';
+  let rootSeen=false, rootNamespace='', segment=0;
   const fail=(error:GpxError):never=>{report.status='failed';report.error=error;throw new Error('GPX_AUDIT_STOP');};
   const alias=(uri:string,local:string,standard:boolean) => {
     if(standard && labels.has(local)) return local;
@@ -86,7 +88,8 @@ export function createGpxAudit() {
     }
     const extension=Boolean(parent?.extension || (correctNamespace && tag.local==='extensions'));
     if(extension) report.extensionElements++;
-    const frame:Frame={local:tag.local,uri:tag.uri,path,standard:correctNamespace,context,extension,children:0,text:'',textOverflow:false};
+    const frame:Frame={local:tag.local,uri:tag.uri,path,standard:correctNamespace,context,extension,children:0,text:'',textOverflow:false,
+      segment:['trkseg','rte','wpt'].includes(context)?++segment:(parent?.segment??0)};
     if(parent) parent.children++;
     if(context==='trk') report.tracks++;
     if(context==='rte') report.routes++;
@@ -97,7 +100,7 @@ export function createGpxAudit() {
       const valid=lat!==undefined && lon!==undefined && decimal(lat) && decimal(lon) && Math.abs(Number(lat))<=90 && Number(lon)>=-180 && Number(lon)<180;
       if(lat===undefined || lon===undefined) stats.coordinatesMissing++;
       else if(valid) stats.coordinatesValid++;else stats.coordinatesInvalid++;
-      frame.point={kind,coordinates:valid,fields:new Map()};
+      frame.point={kind,coordinates:valid,coordinate:{latitude:Number(lat),longitude:Number(lon)},fields:new Map()};
     }
     for(const attribute of Object.values(tag.attributes)) {
       report.attributes++;
@@ -147,6 +150,7 @@ export function createGpxAudit() {
       if(valid) stats.valid++;else stats.invalid++;
     }
     if(point.coordinates && time) stats.comparable++;
+    onPoint?.({kind:point.kind,segment:frame.segment,coordinate:point.coordinate,time,valid:point.coordinates && !!time});
     if(point.kind==='wpt' || !parent) return;
     if(!point.coordinates || !time) {delete parent.previous;return;}
     if(parent.previous!==undefined) {

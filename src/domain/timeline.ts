@@ -15,6 +15,10 @@ export interface Observation {
   readonly time: Instant;
   /** Optional reported horizontal accuracy in metres; never inferred. */
   readonly accuracyMeters?: number;
+  readonly source?: 'raw' | 'semantic' | 'gpx';
+  /** Explicit source continuity; null starts an isolated point or a new run. */
+  readonly predecessorId?: ObservationId | null;
+  readonly sourceSegment?: string;
 }
 export interface RecordedVisit {
   readonly id: VisitId;
@@ -36,6 +40,8 @@ export interface TimelineData {
   readonly observations: readonly Observation[];
   readonly recordedVisits: readonly RecordedVisit[];
   readonly recordedPaths: readonly RecordedPath[];
+  readonly detailedObservations?: readonly Observation[];
+  readonly format?: 'timeline' | 'gpx';
 }
 /** A user's explicit choice, tied to a particular observation rather than all visits at a coordinate. */
 export interface ManualVisit {
@@ -51,8 +57,8 @@ export interface PhotoAttachment {
   readonly visitId: VisitId;
   readonly objectUrl: string;
 }
-export type ImportError = 'INVALID_JSON' | 'UNSUPPORTED_FORMAT' | 'INPUT_LIMIT' | 'NO_VALID_POSITIONS' | 'FILE_READ_FAILED';
-/** Current rawSignals accounting; missing counts means input was not fully inspected, not zero. */
+export type ImportError = 'INVALID_JSON' | 'INVALID_XML' | 'UNSUPPORTED_ENCODING' | 'DTD_FORBIDDEN' | 'UNSUPPORTED_FORMAT' | 'INPUT_LIMIT' | 'NO_VALID_POSITIONS' | 'FILE_READ_FAILED';
+/** Supported signal/path-point accounting; missing counts means input was not fully inspected, not zero. */
 export interface ImportCounts { input: number; accepted: number; ignoredSignals: number; invalidPositions: number; ignoredRootFields: number }
 /** Never include arbitrary keys, filenames, source values, or exception text in diagnostics. */
 export type ParseResult =

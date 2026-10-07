@@ -1,4 +1,5 @@
-import { parseRawValue, rawCoordinate, rawTimestamp } from '../../parser/rawPreview';
+import { rawCoordinate, rawTimestamp } from '../../parser/rawPreview';
+import { parseTimelineRouteValue } from '../../parser/routeImport';
 import type { ImportCounts, ImportError } from '../../domain/timeline';
 
 // Only these literal schema labels can leave the worker. All other names get opaque aliases.
@@ -40,12 +41,13 @@ export function emptyAudit(): AuditReport {
 }
 /** No source value/name survives this projection. Uses exactly the app parser, not a parallel schema. */
 export function auditApp(root: unknown): AuditReport['app'] {
-  const result=parseRawValue(root,'dataset:local-audit');
+  const result=parseTimelineRouteValue(root,'dataset:local-audit');
   return result.ok ? {checked:true,ok:true,counts:result.counts}
     : {checked:true,ok:false,code:result.code,...(result.counts ? {counts:result.counts} : {})};
 }
 interface Frame { value: unknown[] | Record<string,unknown>; path: string; depth: number; index: number; keys?: string[]; unknownName: boolean }
-const readable = (path: string) => /^\$\.rawSignals(\[\](\.position(\.(LatLng|latLng|timestamp|accuracyMeters))?)?)?$/.test(path);
+const readable = (path: string) => /^\$\.rawSignals(\[\](\.position(\.(LatLng|latLng|timestamp|accuracyMeters))?)?)?$/.test(path)
+  || /^\$\.semanticSegments(\[\](\.(startTime|endTime|timelinePath(\[\](\.(point|time|durationMinutesOffset))?)?|visit(\.topCandidate(\.placeLocation(\.latLng)?)?)?))?)?$/.test(path);
 
 /** Iterative, resumable, complete traversal: no node/depth cap or array sampling. */
 export function createAudit(root: unknown) {
@@ -129,7 +131,7 @@ export function formatAuditReport(report: AuditReport): string {
     '표준 JSON 파싱 후의 구조를 검사합니다. 같은 객체 안의 중복 키는 마지막 값만 남으며, 중복 키 원문 검사는 하지 않습니다.',
     '', '현재 앱 파서 검사 (오류 의심 필터 적용 전)',
     !app.checked ? '파서 검사: 미실행/미완료' : app.ok ? '파서 검사: 지원 입력 · 관측 채택 완료' : `파서 검사: 채택 중단 [${app.code}]`,
-    ...(app.counts ? [`선택한 rawSignals ${n(app.counts.input)}개 = 채택 ${n(app.counts.accepted)}개 + 위치 외 신호 ${n(app.counts.ignoredSignals)}개 + 좌표·시각/구조 불량 ${n(app.counts.invalidPositions)}개`,
+    ...(app.counts ? [`선택한 신호·경로점 ${n(app.counts.input)}개 = 채택 ${n(app.counts.accepted)}개 + 위치 외 신호 ${n(app.counts.ignoredSignals)}개 + 좌표·시각/구조 불량 ${n(app.counts.invalidPositions)}개`,
       `앱에서 제외한 최상위 필드 ${n(app.counts.ignoredRootFields)}개`] : ['앱 채택/제외 건수: 확인할 수 없음 (0건으로 해석하지 마세요).']),
     '', '파일 전체에서 발견한 구조 후보 (서로 중첩될 수 있으며 유효 기록 수가 아닙니다)',
     `알려진 위치 관측형 객체 ${n(report.knownPositionObjects)}개 · 그중 앱 입력 경로 밖 ${n(report.outsideRawPositionObjects)}개`,

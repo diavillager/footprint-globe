@@ -2,6 +2,8 @@
 // Entirely synthetic input; every external request is intercepted.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
+async function preparePeriod(page) { await page.locator('dialog[open]').waitFor(); if(await page.getByRole('dialog',{name:'등록할 기간 선택',exact:true}).count()) {await page.getByRole('button',{name:'전체 기간',exact:true}).click();await page.getByRole('button',{name:'이 기간으로 계속',exact:true}).click();} }
+
 let stage = 'startup';
 (async () => {
   const { createServer, preview, build } = await import('vite');
@@ -38,17 +40,17 @@ let stage = 'startup';
       await page.goto(origin);
       await page.getByText('상세 지도 준비 완료',{exact:false}).waitFor({state:'attached'});
       const timeline={rawSignals:[[0,127],[60,127],[70,127.02],[80,127],[140,127]].map(([seconds,lon])=>({position:{LatLng:`37°, ${lon}°`,timestamp:new Date(Date.UTC(2040,0,1)+seconds*1000).toISOString(),accuracyMeters:5}}))};
-      const upload=()=>page.getByLabel('JSON 올리기',{exact:true}).setInputFiles({name:'QUALITY_CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(timeline))});
+      const upload=()=>page.getByLabel('JSON·GPX 올리기',{exact:true}).setInputFiles({name:'QUALITY_CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(timeline))});
       const close=()=>page.getByRole('button',{name:'창 닫기',exact:true}).click();
       const inspect=()=>page.getByRole('button',{name:/^위치 검사/}).click();
       const mapped=page.getByRole('button',{name:'장소별 보기',exact:true});
       const allow=async()=>{
-        await page.getByRole('button',{name:'허용하고 장소 매핑',exact:true}).click();
+        await preparePeriod(page); await page.getByRole('button',{name:'허용하고 장소 매핑',exact:true}).click();
         await page.waitForFunction(()=>![...document.querySelectorAll('button')].find(b=>b.textContent==='장소별 보기').disabled);
       };
       await upload();
-      await page.getByRole('dialog',{name:'장소 매핑 안내',exact:true}).waitFor();
-      assert.match(await page.locator('.import-status').textContent(),/관측 5개 · 연결 2개 · 숨김 1개/);
+      await page.getByRole('dialog',{name:'등록할 기간 선택',exact:true}).waitFor();
+      assert.match(await page.locator('.import-status').textContent(),/분석 완료 · 관측 5개/);
       assert.equal(await page.getByRole('checkbox',{name:'오류 의심 지점 숨기기'}).isChecked(),true);
       assert.equal(requests,0);
       await allow(); await mapped.click();
@@ -84,13 +86,13 @@ let stage = 'startup';
       await page.getByRole('checkbox',{name:'오류 의심 지점 숨기기'}).uncheck();
       assert.match(await page.locator('.import-status').textContent(),/연결 4개 · 숨김 0개/);
       await page.waitForTimeout(600);assert.equal(requests,afterReset);
-      await upload(); await page.getByRole('button',{name:'원본만 보기',exact:true}).click();
+      await upload(); await preparePeriod(page); await page.getByRole('button',{name:'원본만 보기',exact:true}).click();
       assert.equal(await page.getByRole('checkbox',{name:'오류 의심 지점 숨기기'}).isChecked(),true);
       assert.match(await page.locator('.import-status').textContent(),/숨김 1개/);
       await inspect(); assert.match(await page.getByRole('dialog',{name:'위치 검사',exact:true}).textContent(),/개별 복원 0개/);await close();
       const stationary={rawSignals:timeline.rawSignals.filter((_,index)=>index!==2)};
-      await page.getByLabel('JSON 올리기',{exact:true}).setInputFiles({name:'QUALITY_CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(stationary))});
-      await page.getByRole('dialog',{name:'장소 매핑 안내',exact:true}).waitFor();
+      await page.getByLabel('JSON·GPX 올리기',{exact:true}).setInputFiles({name:'QUALITY_CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(stationary))});
+      await page.getByRole('dialog',{name:'등록할 기간 선택',exact:true}).waitFor();
       await allow(); await mapped.click();
       const stationaryRequests=requests;
       for (const checked of [false,true]) {
@@ -105,8 +107,8 @@ let stage = 'startup';
       assert.match(await page.getByRole('dialog',{name:'위치 검사',exact:true}).textContent(),/이탈 시작 후보 0건/);
       await close(); await page.waitForTimeout(600); assert.equal(requests,stationaryRequests);
       const slow={rawSignals:timeline.rawSignals.map((signal,index)=>({position:{...signal.position,timestamp:new Date(Date.UTC(2040,0,1)+index*60000).toISOString()}}))};
-      await page.getByLabel('JSON 올리기',{exact:true}).setInputFiles({name:'QUALITY_CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(slow))});
-      await page.getByRole('button',{name:'원본만 보기',exact:true}).click();
+      await page.getByLabel('JSON·GPX 올리기',{exact:true}).setInputFiles({name:'QUALITY_CANARY.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(slow))});
+      await preparePeriod(page); await page.getByRole('button',{name:'원본만 보기',exact:true}).click();
       await inspect(); await page.getByText('탐지되지 않은 이유 확인',{exact:true}).click();
       const diagnostic=page.getByRole('region',{name:'속도와 무관한 복귀 패턴 진단'});
       await diagnostic.waitFor();

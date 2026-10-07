@@ -35,7 +35,7 @@ export interface QualityReport {
   suspects: Map<ObservationId, Suspicion>;
   conflicts: Set<ObservationId>;
 }
-export type BreakReason = 'hidden' | 'long-gap' | 'time-conflict';
+export type BreakReason = 'hidden' | 'long-gap' | 'time-conflict' | 'source-boundary' | 'day-boundary';
 const meters = (a: Observation, b: Observation) => separationKm(a.coordinate, b.coordinate) * 1000;
 // Reported accuracy only weakens evidence. This is not a guaranteed error bound.
 const adjustedMeters = (a: Observation, b: Observation) => Math.max(0, meters(a,b) - (a.accuracyMeters ?? 0) - (b.accuracyMeters ?? 0));
@@ -184,7 +184,7 @@ export function excludedLocationIds(report: QualityReport, hide: boolean, restor
 export function projectLocations(points: readonly Observation[], report: QualityReport, hide: boolean, restored: ReadonlySet<ObservationId>) {
   return projectLocationSubset(points, report, excludedLocationIds(report,hide,restored));
 }
-export function projectLocationSubset(points: readonly Observation[], report: QualityReport, excludedIds: readonly ObservationId[]) {
+export function projectLocationSubset(points: readonly Observation[], report: QualityReport, excludedIds: readonly ObservationId[], forcedBreaks:ReadonlySet<ObservationId>=new Set()) {
   const visible: Observation[] = [], connections: Connection[] = [], breaks = new Map<ObservationId,BreakReason>();
   const excluded = new Set(excludedIds);
   let previous: Observation | undefined;
@@ -195,6 +195,8 @@ export function projectLocationSubset(points: readonly Observation[], report: Qu
     if (previous) {
       const ms=point.time.epochMs-previous.time.epochMs;
       const reason: BreakReason | undefined = points[index-1] !== previous ? 'hidden'
+        : forcedBreaks.has(point.id) ? 'day-boundary'
+        : point.predecessorId!==undefined && point.predecessorId!==previous.id ? 'source-boundary'
         : ms > QUALITY_POLICY.gapMs ? 'long-gap'
         : report.conflicts.has(previous.id) || report.conflicts.has(point.id) ? 'time-conflict' : undefined;
       if (reason) breaks.set(point.id,reason);
@@ -203,4 +205,20 @@ export function projectLocationSubset(points: readonly Observation[], report: Qu
     previous=point;
   }
   return {points:visible,connections,breaks,excluded};
+}
+
+/** Never create outlier context across independent GPX/detail runs. */
+export function inspectSourceLocations(points:readonly Observation[]):QualityReport {
+  if(points.every(p=>p.predecessorId===undefined)) return inspectLocations(points);
+  const combined:QualityReport={suspects:new Map(),conflicts:new Set()};
+  let run:Observation[]=[];
+  const flush=()=>{
+    if(!run.length) return;
+    const part=inspectLocations(run);
+    for(const [id,evidence] of part.suspects) combined.suspects.set(id,evidence);
+    for(const id of part.conflicts) combined.conflicts.add(id);
+    run=[];
+  };
+  for(const point of points) {if(run.length && point.predecessorId!==run.at(-1)!.id) flush();run.push(point);}
+  flush();return combined;
 }

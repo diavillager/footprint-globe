@@ -32,6 +32,7 @@ export function ObservationList({ points, selectedId, onSelect, timezone, qualit
         <button aria-pressed={point.id === selectedId} onClick={() => onSelect(point)}>
           관측 {points.indexOf(point) + 1} · {formatObservationTime(point.time, timezone)}
         </button>
+        <small className="source-label">{point.source==='semantic'?'Timeline 상세 경로':point.source==='gpx'?'GPX 기록':'Timeline 원시 관측'}</small>
         {quality && excluded && restored && onRestore && <QualityEvidence point={point} report={quality} excluded={excluded} restored={restored} onRestore={onRestore} />}
       </li>)}
     </ol>
