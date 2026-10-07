@@ -1,5 +1,7 @@
 import type { FeatureCollection, Point, LineString } from 'geojson';
-import type { Observation } from '../../domain/timeline';
+import type { PlaceSummary } from '../landmarks/placeSummary';
+import { connectAll } from './analysis';
+import type { Observation, ObservationId } from '../../domain/timeline';
 import type { Connection } from './analysis';
 import { arcVertices } from './geometry';
 
@@ -27,4 +29,14 @@ export function mapConnections(connections: readonly Connection[], differentiate
     }
     return { type: 'Feature', properties: { gap: differentiated && link.seconds > threshold }, geometry: { type: 'LineString', coordinates } };
   }) };
+}
+
+export function summaryLines(summary: PlaceSummary, selected: ObservationId | null) {
+  const data = mapConnections(summary.edges.map(edge => connectAll([edge.from.point,edge.to.point])[0]!),false,0);
+  data.features.forEach((feature,index) => {
+    const edge = summary.edges[index]!;
+    feature.properties = {summary:true, edgeKey:edge.key, count:edge.transitions.length,
+      highlighted:selected !== null && edge.transitions.some(pair => pair.from === selected || pair.to === selected)};
+  });
+  return data;
 }

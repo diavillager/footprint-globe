@@ -197,3 +197,6 @@ main.map-app { position: fixed; inset: 0; max-width: none; margin: 0; padding: 0
 .landmark-rail li button:hover { background: #dceee4; }.landmark-rail li button[aria-pressed=true]:hover { background: #126456; }
 .record-window[open] { position: fixed; z-index: 4; top: 50%; left: 50%; right: auto; margin: 0; transform: translate(-50%, -50%); max-height: calc(100dvh - 300px); }
 .record-window .window-content { max-height: calc(100dvh - 385px); }
+
+.summary-legend { position:absolute; bottom:104px; left:16px; z-index:3; padding:6px 9px; border-radius:8px; background:#fffffff0; color:#28554c; font-size:11px; pointer-events:none; }
+.summary-legend span { display:block; margin-top:3px; }

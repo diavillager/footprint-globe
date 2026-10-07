@@ -10,7 +10,7 @@ export function diaryCandidate(session: LandmarkSession, group: ObservationGroup
   if (state.status !== 'success') return null;
   return state.candidates[0] ?? null;
 }
-export function DiaryCard({ group, index, session, timezone, onSelect }: { group: ObservationGroup; index: number; session: LandmarkSession; timezone: DisplayTimezone; onSelect: (point: Observation) => void }) {
+export function DiaryCard({ group, index, session, timezone, onSelect, recordCount = 1 }: { recordCount?: number; group: ObservationGroup; index: number; session: LandmarkSession; timezone: DisplayTimezone; onSelect: (point: Observation) => void }) {
   const candidate = diaryCandidate(session, group);
   if (!candidate) return null;
   const label = candidate.name;
@@ -18,7 +18,7 @@ export function DiaryCard({ group, index, session, timezone, onSelect }: { group
   return <article className="diary-card">
     <button className="diary-card-hit" aria-label={`${index + 1}. ${label} 상세 보기`} onClick={event => { event.stopPropagation(); onSelect(group.representative); }}>
       <span className="diary-card-photo">{session.image(candidate.providerPlaceId) ? <LandmarkPhoto id={candidate.providerPlaceId} session={session} compact /> : <span className="photo-placeholder">사진 없음</span>}</span>
-      <span className="diary-card-copy"><span className="diary-number">{index + 1}</span><strong>{label}</strong><small>{formatDiaryTime(group.representative.time, timezone)}</small><small className="place-category">{categoryLabel(candidate.categories)}</small></span>
+      <span className="diary-card-copy"><span className="diary-number">{index + 1}</span><strong>{label}</strong>{recordCount > 1 && <small>연결된 기록 {recordCount}개</small>}<small>{formatDiaryTime(group.representative.time, timezone)}</small><small className="place-category">{categoryLabel(candidate.categories)}</small></span>
     </button>
     {media && <a className="diary-attribution" href={media.source} target="_blank" rel="noreferrer">사진 출처{media.author ? ` · ${media.author}` : ''}{media.license ? ` · ${media.license}` : ''}</a>}
   </article>;

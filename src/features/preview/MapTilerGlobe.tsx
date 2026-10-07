@@ -7,13 +7,14 @@ import type { Observation } from '../../domain/timeline';
 import type { Connection } from './analysis';
 import { formatDiaryTime, type DisplayTimezone } from './observationTime';
 import { mapTilerKey } from '../../map-config';
-import { mapConnections, mapPoints } from './mapData';
+import { mapConnections, mapPoints, summaryLines } from './mapData';
 import type { ObservationGroup } from '../landmarks/groups';
 import type { LandmarkSession } from '../landmarks/session';
+import type { PlaceSummary } from '../landmarks/placeSummary';
 import { DiaryCard, diaryCandidate } from '../landmarks/TravelDiary';
 
 type Props = {
-  groups: readonly ObservationGroup[]; originalPoints: readonly Observation[];
+  summary: PlaceSummary | null; groups: readonly ObservationGroup[]; originalPoints: readonly Observation[];
   points: readonly Observation[]; connections: readonly Connection[];
   selectedObservation: Observation | null; focusRevision: number; focusMode: 'detail' | 'rail';
   landmarkSession: LandmarkSession;
@@ -25,11 +26,15 @@ sdk.setWorkerUrl(workerUrl);
 
 export default function MapTilerGlobe(props: Props) {
   const landmarkRevision = useSyncExternalStore(props.landmarkSession.subscribe, props.landmarkSession.snapshot);
+  const markerEntries = useMemo(() => props.summary ? props.summary.nodes.map(node => {
+    const group = node.groups.find(group => group.representative.id === props.selectedObservation?.id) ?? node.groups[0]!;
+    return {group, index:props.groups.indexOf(group), point:node.point, count:node.groups.length};
+  }) : [], [props.summary,props.groups,props.selectedObservation]);
   const [visibleIndices, setVisibleIndices] = useState<number[]>([]);
   const diaryHosts = useMemo(() => visibleIndices.flatMap(index => {
-    const group = props.groups[index];
-    return group ? [{ group, index, host: document.createElement('div') }] : [];
-  }), [props.groups, visibleIndices]);
+    const entry = markerEntries[index];
+    return entry ? [{ ...entry, host: document.createElement('div') }] : [];
+  }), [markerEntries, visibleIndices]);
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<sdk.Map | null>(null);
   const latest = useRef(props);
@@ -40,7 +45,7 @@ export default function MapTilerGlobe(props: Props) {
   const [popupHost] = useState(() => document.createElement('div'));
   const focusedRevision = useRef(props.focusRevision);
   const points = useMemo(() => mapPoints(props.points), [props.points]);
-  const lines = useMemo(() => mapConnections(props.connections, false, 0), [props.connections]);
+  const lines = useMemo(() => props.summary ? summaryLines(props.summary,props.selectedObservation?.id ?? null) : mapConnections(props.connections, false, 0), [props.connections,props.summary,props.selectedObservation]);
   useEffect(() => {
     if (!container.current || !mapTilerKey) return;
     setReady(false); setFailed(false);
@@ -83,14 +88,19 @@ export default function MapTilerGlobe(props: Props) {
         }
         instance.addSource('observations', { type: 'geojson', data: mapPoints(latest.current.points), maxzoom: 20 });
         instance.addSource('connections', { type: 'geojson', data: mapConnections(latest.current.connections, false, 0), maxzoom: 20, tolerance: 0 });
-        instance.addLayer({ id: 'trace-solid', type: 'line', source: 'connections', filter: ['==', ['get', 'gap'], false], paint: { 'line-color': '#087e78', 'line-width': 3 } });
+        instance.addLayer({ id: 'trace-solid', type: 'line', source: 'connections', filter: ['!=', ['get', 'summary'], true], paint: { 'line-color': '#087e78', 'line-width': 3 } });
+        instance.addLayer({ id: 'place-summary', type:'line', source:'connections', filter:['==',['get','summary'],true], paint:{'line-color':'#087e78','line-width':2,'line-dasharray':[3,3],'line-opacity':.5} });
+        instance.addLayer({ id:'place-summary-selected',type:'line',source:'connections',filter:['==',['get','highlighted'],true],paint:{'line-color':'#c15c15','line-width':4,'line-dasharray':[3,2]} });
         instance.addLayer({ id: 'observations', type: 'circle', source: 'observations', paint: { 'circle-radius': 4, 'circle-color': '#087e78', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1 } });
         instance.addLayer({ id: 'selected', type: 'circle', source: 'observations', filter: ['==', ['get', 'observationId'], ''], paint: { 'circle-radius': 9, 'circle-color': '#ffb74d', 'circle-opacity': .4, 'circle-stroke-color': '#ac4200', 'circle-stroke-width': 3 } });
         instance.on('movestart', event => { if (event.originalEvent) latest.current.onMapInteract(); });
         instance.on('click', event => {
           if (!instance) return;
           const ids = new Set(instance.queryRenderedFeatures([[event.point.x - 5, event.point.y - 5], [event.point.x + 5, event.point.y + 5]], { layers: ['observations'] }).map(feature => feature.properties.observationId));
-          const found = latest.current.points.filter(point => ids.has(point.id));
+          const current = latest.current;
+          const found = current.summary
+            ? current.summary.nodes.filter(node => ids.has(node.point.id)).flatMap(node => node.groups.map(group => group.representative))
+            : current.points.filter(point => ids.has(point.id));
           if (found.length) latest.current.onPick(found);
         });
         setReady(true);
@@ -102,7 +112,8 @@ export default function MapTilerGlobe(props: Props) {
     if (!ready || !map.current) return;
     (map.current.getSource('observations') as sdk.GeoJSONSource).setData(points);
     (map.current.getSource('connections') as sdk.GeoJSONSource).setData(lines);
-  }, [ready, points, lines]);
+    map.current.setPaintProperty('place-summary','line-opacity',props.summary && props.selectedObservation ? .12 : .5);
+  }, [ready, points, lines, props.summary, props.selectedObservation]);
   // Fit only when the imported dataset changes, not when its display mode changes.
   useEffect(() => {
     if (!ready || !map.current) return;
@@ -116,7 +127,8 @@ export default function MapTilerGlobe(props: Props) {
   }, [ready, props.originalPoints]);
   useEffect(() => {
     if (!ready || !map.current) return;
-    const point = props.selectedObservation;
+    const selected = props.selectedObservation;
+    const point = selected ? props.summary?.byObservation.get(selected.id)?.point ?? selected : null;
     map.current.setFilter('selected', ['==', ['get', 'observationId'], point?.id ?? '']);
     if (point && focusedRevision.current !== props.focusRevision) {
       const center: [number, number] = [point.coordinate.longitude, point.coordinate.latitude];
@@ -124,7 +136,7 @@ export default function MapTilerGlobe(props: Props) {
       else map.current.jumpTo({ center });
     }
     focusedRevision.current = props.focusRevision;
-  }, [ready, props.selectedObservation, props.focusRevision, props.focusMode]);
+  }, [ready, props.selectedObservation, props.focusRevision, props.focusMode, props.summary]);
   useEffect(() => {
     if (!ready || !map.current || !props.selectedObservation || !props.showPointPopup) return;
     const instance = map.current, point = props.selectedObservation;
@@ -150,31 +162,31 @@ export default function MapTilerGlobe(props: Props) {
     const chooseVisible = () => {
       const cells = new Map<string, number>();
       const width = instance.getContainer().clientWidth, height = instance.getContainer().clientHeight;
-      props.groups.forEach((group, index) => {
+      markerEntries.forEach(({group,point:anchor}, index) => {
         if (!diaryCandidate(props.landmarkSession, group)) return;
-        const point = instance.project([group.representative.coordinate.longitude, group.representative.coordinate.latitude]);
+        const point = instance.project([anchor.coordinate.longitude, anchor.coordinate.latitude]);
         if (point.x < 0 || point.x > width || point.y < 0 || point.y > height) return;
         const cell = `${Math.floor(point.x / 320)}:${Math.floor(point.y / 190)}`;
         const previous = cells.get(cell);
         const hasPhoto = (i: number) => {
-          const candidate = diaryCandidate(props.landmarkSession, props.groups[i]!);
+          const candidate = diaryCandidate(props.landmarkSession, markerEntries[i]!.group);
           return candidate && props.landmarkSession.image(candidate.providerPlaceId) ? 1 : 0;
         };
-        if (previous === undefined || hasPhoto(index) > hasPhoto(previous)) cells.set(cell, index);
+        if (previous === undefined || group.representative.id === props.selectedObservation?.id || markerEntries[previous]!.group.representative.id !== props.selectedObservation?.id && hasPhoto(index) > hasPhoto(previous)) cells.set(cell, index);
       });
       const indices = [...cells.values()].sort((a, b) => a - b);
       setVisibleIndices(previous => previous.length === indices.length && previous.every((value, i) => value === indices[i]) ? previous : indices);
     };
     chooseVisible(); instance.on('moveend', chooseVisible); instance.on('resize', chooseVisible);
     return () => { instance.off('moveend', chooseVisible); instance.off('resize', chooseVisible); };
-  }, [ready, props.groups, props.landmarkSession, landmarkRevision]);
+  }, [ready, markerEntries, props.landmarkSession, landmarkRevision, props.selectedObservation]);
   useEffect(() => {
     if (!ready || !map.current) return;
     const instance = map.current;
-    const markers = diaryHosts.map(({ group, host }) => {
+    const markers = diaryHosts.map(({ point, host }) => {
       host.className = 'diary-balloon';
       return new sdk.Marker({ element: host, anchor: 'bottom', offset: [0, -9] })
-        .setLngLat([group.representative.coordinate.longitude, group.representative.coordinate.latitude]).addTo(instance);
+        .setLngLat([point.coordinate.longitude, point.coordinate.latitude]).addTo(instance);
     });
     const layout = () => {
       const used: DOMRect[] = [];
@@ -184,7 +196,7 @@ export default function MapTilerGlobe(props: Props) {
           const candidate = diaryCandidate(latest.current.landmarkSession, group);
           return candidate && latest.current.landmarkSession.image(candidate.providerPlaceId) ? 1 : 0;
         };
-        return hasPhoto(b.group) - hasPhoto(a.group);
+        return Number(b.group.representative.id === latest.current.selectedObservation?.id) - Number(a.group.representative.id === latest.current.selectedObservation?.id) || hasPhoto(b.group) - hasPhoto(a.group);
       });
       for (const { host } of ordered) {
         const rect = host.getBoundingClientRect();
@@ -211,7 +223,7 @@ export default function MapTilerGlobe(props: Props) {
       {props.candidates.length > 1 && <div className="popup-candidates"><p>겹친 지점 {selectedIndex + 1} / {props.candidates.length}</p><button disabled={selectedIndex <= 0} onClick={() => props.onSelect(props.candidates[selectedIndex - 1]!)}>이전 지점</button><button disabled={selectedIndex >= props.candidates.length - 1} onClick={() => props.onSelect(props.candidates[selectedIndex + 1]!)}>다음 지점</button></div>}
     </div>, popupHost)}
 
-    {diaryHosts.map(({ group, host, index }) => createPortal(<DiaryCard group={group} index={index} session={props.landmarkSession} timezone={props.timezone} onSelect={props.onSelect} />, host, group.groupId))}
+    {diaryHosts.map(({ group, host, index, count }) => createPortal(<DiaryCard recordCount={count} group={group} index={index} session={props.landmarkSession} timezone={props.timezone} onSelect={props.onSelect} />, host, group.groupId))}
     {!mapTilerKey ? <p role="alert" className="map-message">지도 키가 없습니다. VITE_MAPTILER_API_KEY를 설정해 주세요. JSON 등록과 목록 확인은 계속 사용할 수 있습니다.</p> : <>
       <div className={ready && !failed ? 'sr-only' : 'map-message'}><p role="status">{failed ? '[MAP_UNAVAILABLE] 일부 지도 자료를 불러오지 못했습니다. 기록 목록은 계속 사용할 수 있습니다.' : ready ? '상세 지도 준비 완료' : '상세 지도를 불러오는 중입니다…'}</p>
       {failed && <button onClick={() => setRevision(value => value + 1)}>지도 다시 시도</button>}</div>
