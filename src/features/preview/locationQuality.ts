@@ -24,7 +24,12 @@ export const SCREENING_LABELS = {
 } as const;
 export type ScreeningReason = keyof typeof SCREENING_LABELS;
 export interface Screening { candidates: number; detected: number; rejected: Record<ScreeningReason,number> }
+export interface PatternScreening {
+  completed: number; skipped: number; stableBefore: number; shortReturn: number; stableAfter: number;
+  pattern: number; accuracySupported: number; speed100: number; speed200: number; speed300: number;
+}
 export interface QualityReport {
+  patternScreening?: PatternScreening;
   /** Entry candidates, not rejected observations; each has exactly one first failing condition. */
   screening?: Screening;
   suspects: Map<ObservationId, Suspicion>;
@@ -38,9 +43,10 @@ const speed = (a: Observation, b: Observation) => {
   const ms = b.time.epochMs - a.time.epochMs;
   return ms > 0 ? adjustedMeters(a,b) / ms * 3600 : 0;
 };
-function stable(points: readonly Observation[], anchor: number, direction: -1 | 1, conflicts: ReadonlySet<ObservationId>) {
+function stable(points: readonly Observation[], anchor: number, direction: -1 | 1, conflicts: ReadonlySet<ObservationId>, budget?: { remaining: number }) {
   const point = points[anchor]!;
   for (let i = anchor + direction; i >= 0 && i < points.length; i += direction) {
+    if (budget && --budget.remaining < 0) return false;
     const next = points[i]!, adjacent = points[i - direction]!;
     if (conflicts.has(next.id) || Math.abs(next.time.epochMs - adjacent.time.epochMs) > QUALITY_POLICY.gapMs
       || meters(point,next) > QUALITY_POLICY.contextRadiusMeters) return false;
@@ -83,6 +89,45 @@ function conflictInBatch(points: readonly Observation[]) {
   };
   return vectors.some(point=>far(point,root));
 }
+/** Diagnostic only: inspect the shape even when speed/accuracy would stop automatic detection. */
+function diagnosePatterns(points: readonly Observation[], starts: readonly number[], conflicts: ReadonlySet<ObservationId>): PatternScreening {
+  const totals: PatternScreening = { completed:0, skipped:0, stableBefore:0, shortReturn:0, stableAfter:0,
+    pattern:0, accuracySupported:0, speed100:0, speed200:0, speed300:0 };
+  // Bounded work for dense exports. Incomplete candidates must never look like failed evidence.
+  const budget = { remaining: 2_000_000 };
+  for (const index of starts) {
+    if (budget.remaining < 0) { totals.skipped++; continue; }
+    const before=points[index-1]!, first=points[index]!;
+    const beforeStable=stable(points,index-1,-1,conflicts,budget);
+    let returned=-1, clean=!conflicts.has(before.id) && !conflicts.has(first.id);
+    let accuracySupported=adjustedMeters(before,first)>=QUALITY_POLICY.excursionMeters;
+    for (let j=index+1;j<points.length;j++) {
+      if (--budget.remaining < 0) break;
+      const after=points[j]!,last=points[j-1]!;
+      if (after.time.epochMs-before.time.epochMs>QUALITY_POLICY.roundTripMs
+        || last.time.epochMs-first.time.epochMs>QUALITY_POLICY.burstMs) break;
+      clean=clean && !conflicts.has(last.id) && !conflicts.has(after.id);
+      if (meters(before,after)<=QUALITY_POLICY.returnMeters) { returned=j; break; }
+      if (meters(before,after)<QUALITY_POLICY.excursionMeters) break;
+      accuracySupported=accuracySupported && adjustedMeters(before,after)>=QUALITY_POLICY.excursionMeters;
+    }
+    const afterStable=returned>=0 && stable(points,returned,1,conflicts,budget);
+    if (budget.remaining < 0) {totals.skipped++;continue;}
+    totals.completed++;
+    if (beforeStable) totals.stableBefore++;
+    if (returned>=0) totals.shortReturn++;
+    if (afterStable) totals.stableAfter++;
+    if (!beforeStable || returned<0 || !afterStable || !clean) continue;
+    totals.pattern++;
+    if (!accuracySupported) continue;
+    totals.accuracySupported++;
+    const both=Math.min(speed(before,first),speed(points[returned-1]!,points[returned]!));
+    if (both>100) totals.speed100++;
+    if (both>200) totals.speed200++;
+    if (both>300) totals.speed300++;
+  }
+  return totals;
+}
 /** Run once on immutable parser order, in the import worker. Never reclassify after restoration. */
 export function inspectLocations(points: readonly Observation[]): QualityReport {
   const suspects = new Map<ObservationId,Suspicion>(), conflicts = new Set<ObservationId>();
@@ -95,11 +140,12 @@ export function inspectLocations(points: readonly Observation[]): QualityReport 
     }
     start=end;
   }
+  const candidateStarts: number[] = [];
   const screening: Screening = { candidates:0, detected:0, rejected:{conflict:0,accuracy:0,entrySpeed:0,beforeContext:0,returnWindow:0,exitSpeed:0,afterContext:0} };
   for (let i = 1; i < points.length; i++) {
     const before = points[i-1]!, first = points[i]!;
     if (suspects.has(before.id) || meters(before,first) < QUALITY_POLICY.excursionMeters) continue;
-    screening.candidates++;
+    screening.candidates++; candidateStarts.push(i);
     if (conflicts.has(before.id) || conflicts.has(first.id)) { screening.rejected.conflict++; continue; }
     if (adjustedMeters(before,first) < QUALITY_POLICY.excursionMeters) { screening.rejected.accuracy++; continue; }
     if (speed(before,first) <= QUALITY_POLICY.speedKmh) { screening.rejected.entrySpeed++; continue; }
@@ -128,7 +174,7 @@ export function inspectLocations(points: readonly Observation[]): QualityReport 
     }
     if (failure) screening.rejected[failure]++;
   }
-  return {suspects,conflicts,screening};
+  return {suspects,conflicts,screening,patternScreening:diagnosePatterns(points,candidateStarts,conflicts)};
 }
 
 /** Only original adjacent observations may connect. Filtering can never create a new edge. */

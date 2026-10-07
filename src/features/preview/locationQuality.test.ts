@@ -147,3 +147,30 @@ it('explains conservative misses without classifying them as errors or changing 
     expect(totals.detected+Object.values(totals.rejected).reduce((a,b)=>a+b,0)).toBe(totals.candidates);
   }
 });
+
+it('evaluates return/persistence after speed or accuracy failure without creating suspects', () => {
+  const slow=[point(0,0),point(1,60),point(2,120,.027),point(3,180),point(4,240)];
+  const report=inspectLocations(slow), diag=report.patternScreening!;
+  expect(report.suspects.size).toBe(0);
+  expect(diag.completed).toBe(2); expect(diag.pattern).toBe(1);
+  expect(diag.accuracySupported).toBe(1);
+  expect(diag.speed100).toBe(1); expect(diag.speed200).toBe(0); expect(diag.speed300).toBe(0);
+  const poor=inspectLocations(slow.map(p=>({...p,accuracyMeters:5000})));
+  expect(poor.patternScreening?.pattern).toBe(1);
+  expect(poor.patternScreening?.accuracySupported).toBe(0);
+  expect(poor.suspects.size).toBe(0);
+});
+it('does not confuse missing return or persistence with a speed-only miss', () => {
+  const onward=[point(0,0),point(1,60),point(2,120,.027),point(3,180,.054),point(4,240,.054)];
+  const diag=inspectLocations(onward).patternScreening!;
+  expect(diag.shortReturn).toBe(0); expect(diag.pattern).toBe(0);
+  expect(diag.speed100).toBe(0); expect(diag.completed+diag.skipped).toBe(2);
+});
+
+it('labels unfinished dense diagnostics as unexamined instead of reporting negative evidence', () => {
+  const points=Array.from({length:10000},(_,i)=>point(i,i/1000,i*.01));
+  const report=inspectLocations(points), diagnostic=report.patternScreening!;
+  expect(report.suspects.size).toBe(0);
+  expect(diagnostic.skipped).toBeGreaterThan(0);
+  expect(diagnostic.completed+diagnostic.skipped).toBe(report.screening!.candidates);
+});
