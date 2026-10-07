@@ -176,11 +176,11 @@ export default function MapTilerGlobe(props: Props) {
         if (!hidden) used.push(rect);
       }
     };
-    instance.on('move', layout);
+    instance.on('render', layout);
     const observer = new ResizeObserver(layout);
     diaryHosts.forEach(({ host }) => observer.observe(host));
     layout();
-    return () => { instance.off('move', layout); observer.disconnect(); markers.forEach(marker => marker.remove()); };
+    return () => { instance.off('render', layout); observer.disconnect(); markers.forEach(marker => marker.remove()); };
   }, [ready, diaryHosts]);
   const selected = props.selectedObservation;
   const representativeLandmark = props.selectedGroup ? diaryCandidate(props.landmarkSession, props.selectedGroup) : null;

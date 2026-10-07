@@ -10,9 +10,9 @@ export default defineConfig(({ mode }) => ({
   plugins: [react(), {
     name: 'local-only-policy',
     transformIndexHtml(_html, context) {
-      const connect = context.server ? "'self' ws://127.0.0.1:* https://api.maptiler.com https://api.geoapify.com" : "'self' https://api.maptiler.com https://api.geoapify.com";
+      const connect = context.server ? "'self' ws://127.0.0.1:* https://api.maptiler.com https://api.geoapify.com https://commons.wikimedia.org https://www.wikidata.org" : "'self' https://api.maptiler.com https://api.geoapify.com https://commons.wikimedia.org https://www.wikidata.org";
       const scripts = context.server ? "'self' 'unsafe-inline'" : "'self'";
-      return [{ tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: `default-src 'none'; script-src ${scripts}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://api.maptiler.com https://upload.wikimedia.org; worker-src 'self' blob:; connect-src ${connect}; base-uri 'none'; form-action 'none'; object-src 'none'` }, injectTo: 'head-prepend' }];
+      return [{ tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: `default-src 'none'; script-src ${scripts}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://api.maptiler.com https://upload.wikimedia.org https://thumb.wikimedia.org; worker-src 'self' blob:; connect-src ${connect}; base-uri 'none'; form-action 'none'; object-src 'none'` }, injectTo: 'head-prepend' }];
     },
   }],
   publicDir: false,

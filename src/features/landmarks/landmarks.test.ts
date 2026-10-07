@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Observation } from '../../domain/timeline';
 import { groupObservations } from './groups';
-import { fetchCandidates, normalizeImage, geoapifyUrl, LandmarkFailure, normalizeCandidates } from './geoapify';
+import { fetchCandidates, fetchImage, imageReference, ImageFailure, normalizeImage, geoapifyUrl, LandmarkFailure, normalizeCandidates } from './geoapify';
 import { LandmarkSession, REQUEST_TIMEOUT_MS } from './session';
 import { buildTrip, trips } from '../../fixtures/travel';
 import { parseTimeline } from '../../parser';
@@ -149,4 +149,45 @@ describe('랜드마크 사진', () => {
     session.dispose(); finish({ url: 'test', source: 'test' }); await pending;
     expect(session.image('one')).toBeNull(); expect(session.hasImageAttempt('one')).toBe(false);
   });
+});
+
+describe('확장 사진 조회와 진단', () => {
+  const wrapped = (media: unknown) => ({ features: [{ properties: { wiki_and_media: media } }] });
+  it('원본·썸네일·Commons 파일 참조에서 같은 파일을 찾는다', () => {
+    for (const value of ['File:Test.jpg', 'https://commons.wikimedia.org/wiki/File:Test.jpg', 'https://commons.wikimedia.org/wiki/Special:FilePath/Test.jpg', 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Test.jpg/480px-Test.jpg']) expect(imageReference(wrapped({ wikimedia_commons: value })).file).toBe('Test.jpg');
+    expect(imageReference(wrapped({ image: 'https://private.invalid/test.jpg', wikimedia_commons: 'File:Test.jpg' })).file).toBe('Test.jpg');
+    expect(imageReference(wrapped({ image: 'https://private.invalid/test.jpg' }))).toEqual({ file: null, unsupported: true });
+    expect(imageReference(wrapped({}))).toEqual({ file: null, unsupported: false });
+    expect(imageReference(wrapped({ wikimedia_commons: 'File:A.jpg|File:B.jpg' })).file).toBeNull();
+  });
+  it('파일명만 Commons로 보내고 썸네일·저작자·라이선스를 반환한다', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(wrapped({ wikimedia_commons: 'File:Test.jpg' }))).mockResolvedValueOnce(Response.json({ query: { pages: { '1': { imageinfo: [{ thumburl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Test.jpg/480px-Test.jpg', extmetadata: { Artist: { value: '<b>Author</b>' }, LicenseShortName: { value: 'CC BY 4.0' } } }] } } } }));
+    const extra = vi.fn();
+    const result = await fetchImage('place', 'key', new AbortController().signal, fetcher, extra);
+    expect(result).toMatchObject({ author: 'Author', license: 'CC BY 4.0' }); expect(extra).toHaveBeenCalledTimes(1);
+    const url = new URL(String(fetcher.mock.calls[1]![0]));
+    expect(url.origin).toBe('https://commons.wikimedia.org'); expect(url.searchParams.get('titles')).toBe('File:Test.jpg'); expect(url.searchParams.has('apiKey')).toBe(false);
+    expect(fetcher.mock.calls[1]![1]).toMatchObject({ credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error' });
+  });
+  it('없음·미지원·조회 실패·브라우저 로딩 실패를 따로 집계하고 중복 표시를 세지 않는다', async () => {
+    const imageLookup = vi.fn().mockResolvedValueOnce(null).mockRejectedValueOnce(new ImageFailure('UNSUPPORTED')).mockRejectedValueOnce(new Error('private')).mockResolvedValue({ url: 'synthetic', source: 'synthetic' });
+    const session = new LandmarkSession('key', vi.fn(), imageLookup); session.allow();
+    for (const id of ['none', 'unsupported', 'error', 'ready']) await session.queryImage(id);
+    expect(session.imageSummary()).toMatchObject({ missing: 1, unsupported: 1, error: 1, ready: 1 });
+    session.imageRendered('ready', false); expect(session.imageSummary()['load-error']).toBe(1);
+    session.imageRendered('ready', true); session.imageRendered('ready', true); expect(session.imageSummary().loaded).toBe(1);
+    session.revoke(); expect(Object.values(session.imageSummary()).every(count => count === 0)).toBe(true);
+  });
+  it('이미지 메타데이터 타임아웃 이후 늦은 결과가 진단 상태를 덮어쓰지 않는다', async () => {
+    vi.useFakeTimers(); let finish!: (value: null) => void;
+    const session = new LandmarkSession('key', vi.fn(), vi.fn(() => new Promise<null>(resolve => { finish = resolve; })));
+    session.allow(); const pending = session.queryImage('late');
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS); expect(session.imageStatus('late')).toBe('error');
+    finish(null); await pending; expect(session.imageStatus('late')).toBe('error');
+  });
+});
+
+it('실제 Commons 썸네일 호스트와 공백·밑줄 차이를 정규화하고 추적 쿼리를 제외한다', () => {
+  const image = normalizeImage({ features: [{ properties: { wiki_and_media: { image: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a8/Public_File.jpg/500px-Public_File.jpg?utm_source=test' } } }] });
+  expect(image).toEqual({ url: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a8/Public_File.jpg/500px-Public_File.jpg', source: 'https://commons.wikimedia.org/wiki/File:Public%20File.jpg' });
 });

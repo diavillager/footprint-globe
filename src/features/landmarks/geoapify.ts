@@ -15,38 +15,114 @@ export interface LandmarkCandidate {
 export class LandmarkFailure extends Error {
   constructor(readonly code: LandmarkError) { super(code); }
 }
-export interface LandmarkImage { url: string; source: string }
-
-/** Only Wikimedia-hosted raster files; arbitrary OSM image URLs are not loaded. */
-export function normalizeImage(body: unknown): LandmarkImage | null {
+export interface LandmarkImage { url: string; source: string; author?: string; license?: string }
+export class ImageFailure extends Error {
+  constructor(readonly code: 'UNSUPPORTED' | 'METADATA' | 'NETWORK') { super(code); }
+}
+function commonsFile(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 2048) return null;
+  let name = '';
+  try {
+    if (/^File:/i.test(value)) name = value.slice(5);
+    else {
+      const url = new URL(value);
+      if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
+      if (url.hostname === 'commons.wikimedia.org') {
+        const match = url.pathname.match(/^\/wiki\/(?:File:|Special:FilePath\/|Special:Redirect\/file\/)(.+)$/i);
+        if (match) name = decodeURIComponent(match[1]!);
+      } else if (['upload.wikimedia.org', 'thumb.wikimedia.org'].includes(url.hostname)) {
+        const match = url.pathname.match(/^\/wikipedia\/commons\/(?:thumb\/)?[a-f0-9]\/[a-f0-9]{2}\/([^/]+)(?:\/[^/]+)?$/i);
+        if (match) name = decodeURIComponent(match[1]!);
+      }
+    }
+  } catch { return null; }
+  return name && !/[\x00-\x1f|/\\#]/.test(name) && /\.(jpe?g|png|webp|gif|tiff?)$/i.test(name) ? name.replace(/_/g, ' ') : null;
+}
+export function imageReference(body: unknown): { file: string | null; unsupported: boolean } {
   const features = record(body)?.features;
   if (!Array.isArray(features)) throw new LandmarkFailure('RESPONSE_INVALID');
+  let unsupported = false;
   for (const feature of features) {
     const media = record(record(record(feature)?.properties)?.wiki_and_media);
-    if (!media || typeof media.image !== 'string') continue;
-    try {
-      const url = new URL(media.image);
-      if (url.protocol !== 'https:' || url.hostname !== 'upload.wikimedia.org' || url.port || url.username || url.password || !/^\/wikipedia\/commons\/[a-f0-9]\/[a-f0-9]{2}\//.test(url.pathname) || !/\.(jpe?g|png|webp)$/i.test(url.pathname)) continue;
-      const filename = decodeURIComponent(url.pathname.split('/').at(-1)!);
-      if (url.pathname.includes('/thumb/')) continue;
-      return { url: url.href, source: `https://commons.wikimedia.org/wiki/File:${encodeURIComponent(filename)}` };
-    } catch { /* Missing or unsupported media leaves a text balloon. */ }
+    for (const value of [media?.image, media?.wikimedia_commons]) {
+      const file = commonsFile(value);
+      if (file) return { file, unsupported: false };
+      if (typeof value === 'string' && value.trim()) unsupported = true;
+    }
+  }
+  return { file: null, unsupported };
+}
+/** Direct safe media normalization; Commons file references are resolved via Imageinfo. */
+export function normalizeImage(body: unknown): LandmarkImage | null {
+  const ref = imageReference(body);
+  if (!ref.file) return null;
+  const features = record(body)!.features as unknown[];
+  for (const feature of features) {
+    const value = record(record(record(feature)?.properties)?.wiki_and_media)?.image;
+    if (typeof value === 'string' && commonsFile(value) === ref.file) {
+      try {
+        const url = new URL(value);
+        if (['upload.wikimedia.org', 'thumb.wikimedia.org'].includes(url.hostname) && /\.(jpe?g|png|webp|gif)$/i.test(url.pathname)) return { url: `${url.origin}${url.pathname}`, source: `https://commons.wikimedia.org/wiki/File:${encodeURIComponent(ref.file)}` };
+      } catch { /* Resolved by Imageinfo below. */ }
+    }
   }
   return null;
 }
-
-export async function fetchImage(id: string, key: string, signal: AbortSignal, fetcher: typeof fetch = fetch): Promise<LandmarkImage | null> {
+async function imageJson(url: URL, signal: AbortSignal, fetcher: typeof fetch, provider: boolean): Promise<unknown> {
+  let response: Response;
+  try { response = await fetcher(url, { signal, credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: provider ? 'strict-origin' : 'no-referrer' }); }
+  catch { throw new ImageFailure('NETWORK'); }
+  if (provider && (response.status === 401 || response.status === 403)) throw new LandmarkFailure('AUTH');
+  if (provider && response.status === 429) throw new LandmarkFailure('RATE_LIMIT');
+  if (!response.ok) throw new ImageFailure('METADATA');
+  try { return await response.json(); } catch { throw new ImageFailure('METADATA'); }
+}
+const plainMetadata = (value: unknown) => typeof value === 'string' ? value.replace(/<[^>]*>/g, '').replace(/&(?:nbsp|amp|quot|lt|gt);/g, ' ').trim().slice(0, 300) : '';
+export async function fetchImage(id: string, key: string, signal: AbortSignal, fetcher: typeof fetch = fetch, onAdditionalRequest: () => void = () => {}): Promise<LandmarkImage | null> {
   const url = new URL('https://api.geoapify.com/v2/place-details');
   url.search = new URLSearchParams({ id, apiKey: key, features: 'details', lang: 'ko' }).toString();
-  let response: Response;
-  try { response = await fetcher(url, { signal, credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'strict-origin' }); }
-  catch { throw new LandmarkFailure('NETWORK'); }
-  if (response.status === 401 || response.status === 403) throw new LandmarkFailure('AUTH');
-  if (response.status === 429) throw new LandmarkFailure('RATE_LIMIT');
-  if (!response.ok) throw new LandmarkFailure('PROVIDER_FAILURE');
-  let body: unknown;
-  try { body = await response.json(); } catch { throw new LandmarkFailure('RESPONSE_INVALID'); }
-  return normalizeImage(body);
+  const details = await imageJson(url, signal, fetcher, true);
+  const ref = imageReference(details);
+  if (!ref.file) {
+    const features = record(details)!.features as unknown[];
+    const entity = features.map(feature => record(record(record(feature)?.properties)?.wiki_and_media)?.wikidata)
+      .find((value): value is string => typeof value === 'string' && /^Q[1-9][0-9]{0,15}$/.test(value));
+    if (entity) {
+      if (signal.aborted) throw new ImageFailure('NETWORK');
+      const wikidata = new URL('https://www.wikidata.org/w/api.php');
+      wikidata.search = new URLSearchParams({ action: 'wbgetclaims', format: 'json', origin: '*', entity, property: 'P18' }).toString();
+      onAdditionalRequest();
+      const claimsBody = await imageJson(wikidata, signal, fetcher, false);
+      const claims = record(record(claimsBody)?.claims)?.P18;
+      if (record(claimsBody)?.error || !record(record(claimsBody)?.claims)) throw new ImageFailure('METADATA');
+      if (Array.isArray(claims)) {
+        for (const claim of [...claims].sort((a, b) => Number(record(b)?.rank === 'preferred') - Number(record(a)?.rank === 'preferred'))) {
+          if (record(claim)?.rank === 'deprecated') continue;
+          const value = record(record(record(claim)?.mainsnak)?.datavalue)?.value;
+          if (typeof value === 'string') ref.file = commonsFile(`File:${value}`);
+          if (ref.file) break;
+        }
+      }
+    }
+  }
+  if (!ref.file) { if (ref.unsupported) throw new ImageFailure('UNSUPPORTED'); return null; }
+  if (signal.aborted) throw new ImageFailure('NETWORK');
+  const commons = new URL('https://commons.wikimedia.org/w/api.php');
+  commons.search = new URLSearchParams({ action: 'query', format: 'json', origin: '*', titles: `File:${ref.file}`, prop: 'imageinfo', iiprop: 'url|extmetadata', iiurlwidth: '480', iiextmetadatafilter: 'Artist|LicenseShortName' }).toString();
+  onAdditionalRequest();
+  const body = await imageJson(commons, signal, fetcher, false);
+  const pages = record(record(body)?.query)?.pages;
+  if (!record(pages)) throw new ImageFailure('METADATA');
+  for (const page of Object.values(pages as Record<string, unknown>)) {
+    const infos = record(page)?.imageinfo;
+    if (!Array.isArray(infos) || !infos.length) continue;
+    const info = record(infos[0]);
+    const image = normalizeImage({ features: [{ properties: { wiki_and_media: { image: info?.thumburl ?? info?.url } } }] });
+    if (!image || commonsFile(image.url) !== ref.file) throw new ImageFailure('UNSUPPORTED');
+    const metadata = record(info?.extmetadata);
+    return { ...image, author: plainMetadata(record(metadata?.Artist)?.value), license: plainMetadata(record(metadata?.LicenseShortName)?.value) };
+  }
+  return null;
 }
 const record = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 export const validCoordinate = (point: Coordinate) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude) && Math.abs(point.latitude) <= 90 && Math.abs(point.longitude) <= 180;

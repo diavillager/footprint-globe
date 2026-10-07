@@ -1,5 +1,5 @@
 import type { Coordinate } from '../../domain/timeline';
-import { fetchCandidates, fetchImage, type LandmarkImage, LandmarkFailure, type LandmarkCandidate, type LandmarkError } from './geoapify';
+import { fetchCandidates, fetchImage, ImageFailure, type LandmarkImage, LandmarkFailure, type LandmarkCandidate, type LandmarkError } from './geoapify';
 import type { ObservationGroup } from './groups';
 
 export const REQUEST_TIMEOUT_MS = 10_000;
@@ -7,11 +7,14 @@ export type QueryState =
   | { status: 'idle' | 'loading' | 'cancelled' }
   | { status: 'success' | 'empty'; candidates: readonly LandmarkCandidate[]; fetchedAt: number }
   | { status: 'error'; code: LandmarkError };
+export type ImageStatus = 'loading' | 'ready' | 'loaded' | 'missing' | 'unsupported' | 'error' | 'load-error' | 'cancelled';
 const idle: QueryState = { status: 'idle' };
 type Lookup = (coordinate: Coordinate, key: string, signal: AbortSignal) => Promise<LandmarkCandidate[]>;
 
 /** One instance per loaded dataset. Automatic diary requests start only after file-level consent. */
 export class LandmarkSession {
+  private imageStates = new Map<string, ImageStatus>();
+  mediaRequests = 0;
   private images = new Map<string, LandmarkImage | null>();
   private imageAttempts = new Set<string>();
   private states = new Map<string, QueryState>();
@@ -29,6 +32,17 @@ export class LandmarkSession {
   private emit() { this.revision++; this.listeners.forEach(listener => listener()); }
   state(groupId: string): QueryState { return this.states.get(groupId) ?? idle; }
   image(id: string) { return this.images.get(id) ?? null; }
+  imageStatus(id: string) { return this.imageStates.get(id); }
+  imageSummary() {
+    const result: Record<ImageStatus, number> = { loading: 0, ready: 0, loaded: 0, missing: 0, unsupported: 0, error: 0, 'load-error': 0, cancelled: 0 };
+    for (const state of this.imageStates.values()) result[state]++;
+    return result;
+  }
+  imageRendered(id: string, ok: boolean) {
+    if (!this.consent || !this.images.get(id) || this.imageStates.get(id) === 'loaded') return;
+    const next = ok ? 'loaded' : 'load-error';
+    if (this.imageStates.get(id) !== next) { this.imageStates.set(id, next); this.emit(); }
+  }
   hasImageAttempt(id: string) { return this.imageAttempts.has(id); }
   selection(groupId: string) { return this.selections.get(groupId) ?? null; }
   get busy() { return this.active !== null; }
@@ -45,27 +59,31 @@ export class LandmarkSession {
     if (this.active) {
       clearTimeout(this.active.timer);
       this.active.controller.abort();
-      if (!this.active.media) this.states.set(this.active.groupId, { status: 'cancelled' });
+      if (this.active.media) this.imageStates.set(this.active.groupId, 'cancelled');
+      else this.states.set(this.active.groupId, { status: 'cancelled' });
       this.active = null;
       this.emit();
     }
   }
-  revoke() { this.cancel(); this.consent = false; this.states.clear(); this.selections.clear(); this.images.clear(); this.imageAttempts.clear(); this.emit(); }
-  dispose() { this.revoke(); this.attempts = 0; this.blocked = null; }
+  revoke() { this.cancel(); this.consent = false; this.states.clear(); this.selections.clear(); this.images.clear(); this.imageAttempts.clear(); this.imageStates.clear(); this.emit(); }
+  dispose() { this.revoke(); this.attempts = 0; this.mediaRequests = 0; this.blocked = null; }
   async queryImage(id: string): Promise<void> {
     if (!this.consent || this.busy || this.unavailable || this.imageAttempts.has(id)) return;
-    this.imageAttempts.add(id);
+    this.imageAttempts.add(id); this.imageStates.set(id, 'loading');
     const generation = ++this.generation, controller = new AbortController();
     this.attempts++;
     const timer = setTimeout(() => {
       if (generation !== this.generation) return;
-      this.generation++; controller.abort(); this.active = null; this.emit();
+      this.generation++; controller.abort(); this.active = null; this.imageStates.set(id, 'error'); this.emit();
     }, REQUEST_TIMEOUT_MS);
-    this.active = { groupId: '', controller, timer, media: true }; this.emit();
+    this.active = { groupId: id, controller, timer, media: true }; this.emit();
     try {
-      const image = await this.imageLookup(id, this.key, controller.signal);
-      if (generation === this.generation) this.images.set(id, image);
+      const image = await this.imageLookup(id, this.key, controller.signal, fetch, () => {
+        if (generation === this.generation) { this.attempts++; this.mediaRequests++; this.emit(); }
+      });
+      if (generation === this.generation) { this.images.set(id, image); this.imageStates.set(id, image ? 'ready' : 'missing'); }
     } catch (error) {
+      if (generation === this.generation) this.imageStates.set(id, error instanceof ImageFailure && error.code === 'UNSUPPORTED' ? 'unsupported' : 'error');
       if (generation === this.generation && error instanceof LandmarkFailure && (error.code === 'AUTH' || error.code === 'RATE_LIMIT')) this.blocked = error.code;
     } finally {
       clearTimeout(timer);

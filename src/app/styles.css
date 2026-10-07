@@ -117,3 +117,5 @@ main.map-app { position: fixed; inset: 0; max-width: none; margin: 0; padding: 0
 .distribution-options button[aria-pressed=true] { background: #087e78; color: white; }
 .place-mapping footer { font-size: 12px; margin-top: 16px; }
 @media (max-width: 699px) { .diary-balloon { width: 150px; } }
+
+.diary-card > a { max-height: 40px; overflow-y: auto; line-height: 1.3; }
