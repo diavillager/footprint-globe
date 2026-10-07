@@ -114,6 +114,10 @@ npm run dev
 
 샘플 생성기와 앱의 지원 범위는 다릅니다. 샘플 생성 성공이 전체 원본의 앱 호환성을 보장하지는 않으며, 실제 파일은 사용자가 앱에서 직접 확인합니다.
 
+### 전체 구조·앱 사용 범위 진단
+
+방대한 원본에서 누락 구조를 직접 찾기 어렵다면 [별도 로컬 진단 도구](tools/timeline-audit/README.md)를 사용하세요. `npm run audit:build` 후 `npm run audit:preview`로 실행하고 JSON을 한 번 선택하면 전체 구조 탐색·실제 앱 파서의 채택 건수·미해석 구조를 보고합니다. 장소 매핑은 필요 없습니다. 공유할 때는 원본 값·파일명·임의 필드명을 제외한 `timeline-structure-report.txt`만 사용합니다. 최대 64 MiB이며, 탐색 완료가 모든 형식의 의미 해석이나 위치 정확성 검증을 뜻하지는 않습니다. 기존 샘플 생성 및 지도 화면과 별개로 실행됩니다.
+
 ### 테스트·시연용 가상 여행
 
 오스트리아·프랑스·이탈리아·일본의 가상 여행 JSON을 생성할 수 있습니다. Node.js 24에서 `node scripts/write-travel-examples.mjs`를 실행한 뒤 `private/travel-demo/`의 파일을 **JSON 올리기**로 선택하세요. 날짜·도시 이동 가정과 장소 수정 방법은 [가상 여행 안내](docs/travel-demo.md)를 참고하세요.

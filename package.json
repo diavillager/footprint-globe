@@ -10,6 +10,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
+    "audit:build": "tsc --noEmit && vite build --config vite.audit.config.mts",
+    "audit:preview": "vite preview --config vite.audit.config.mts --host 127.0.0.1 --port 4190",
     "test": "npm run test:sample && npm run test:app",
     "test:sample": "node --test tests/timeline-sample.test.cjs tests/structure-diagnostics.test.cjs tests/raw-signals.test.cjs tests/source-audit.test.cjs",
     "test:app": "vitest run",
