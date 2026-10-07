@@ -92,7 +92,7 @@ export function LocalPreview() {
   const groups = landmarkSession.groups;
   const groupsByRepresentative = useMemo(() => new Map(groups.map(group => [group.representative.id, group])), [groups]);
   const stops = useMemo(() => mappedStops(groups, group => diaryCandidate(landmarkSession, group)), [groups, landmarkSession]);
-  const mappedGroups = useMemo(() => stops.map(stop => stop.group), [stops]);
+  const mappedGroups = useMemo(() => groups.filter(group => !!diaryCandidate(landmarkSession, group)), [groups, landmarkSession]);
   const placeSummary = useMemo(() => summarizePlaces(groups, group => diaryCandidate(landmarkSession,group), breakBefore), [groups,landmarkSession,breakBefore]);
   const summaryPoints = useMemo(() => placeSummary.nodes.map(node => node.point), [placeSummary]);
   const selectedObservation = allPoints.find(point => point.id === selectedId) ?? null;
@@ -184,7 +184,7 @@ export function LocalPreview() {
     {viewMode === 'mapped' && stops.length > 0 && <LandmarkRail key={data?.datasetId} stops={stops} selectedId={selectedId} onSelect={point => { setCandidates(null); setPanel(null); selectObservation(point, 'rail'); }} />}
     {!panel && selectedObservation && showPlaceDetails && <Panel title="기록 상세" modal={false} onClose={resetSelection}>
       <div className="record-detail">
-        <h3>{viewMode === 'mapped' && groupsByRepresentative.get(selectedObservation.id) ? `기록 지점 ${mappedGroups.findIndex(group => group.representative.id === selectedObservation.id) + 1}` : `관측 ${allPoints.indexOf(selectedObservation) + 1}`}</h3>
+        <h3>{viewMode === 'mapped' && groupsByRepresentative.get(selectedObservation.id) ? `장소 ${stops.findIndex(stop => stop.groups.some(group => group.representative.id === selectedObservation.id)) + 1}` : `관측 ${allPoints.indexOf(selectedObservation) + 1}`}</h3>
         <p>{formatDiaryTime(selectedObservation.time, timezone)}</p>
         <p>위도 {selectedObservation.coordinate.latitude} · 경도 {selectedObservation.coordinate.longitude}</p>
         {candidates && candidates.length > 1 && <div className="detail-neighbors"><p>연결된 기록 {candidateIndex + 1} / {candidates.length}</p><button disabled={candidateIndex <= 0} onClick={() => setSelectedId(candidates[candidateIndex - 1]!.id)}>이전 지점</button><button disabled={candidateIndex >= candidates.length - 1} onClick={() => setSelectedId(candidates[candidateIndex + 1]!.id)}>다음 지점</button></div>}
