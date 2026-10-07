@@ -2,7 +2,7 @@ import type { Coordinate } from '../../domain/timeline';
 import { separationKm } from '../preview/analysis';
 
 export const SEARCH_POLICY = { radiusMeters: 300, limit: 10, categories: ['tourism.attraction', 'tourism.sights', 'entertainment.museum'] } as const;
-export type LandmarkError = 'CONFIGURATION' | 'AUTH' | 'RATE_LIMIT' | 'NETWORK' | 'TIMEOUT' | 'RESPONSE_INVALID' | 'PROVIDER_FAILURE' | 'REQUEST_LIMIT';
+export type LandmarkError = 'CONFIGURATION' | 'AUTH' | 'RATE_LIMIT' | 'NETWORK' | 'TIMEOUT' | 'RESPONSE_INVALID' | 'PROVIDER_FAILURE';
 export interface LandmarkCandidate {
   readonly provider: 'geoapify';
   readonly providerPlaceId: string;
@@ -14,6 +14,39 @@ export interface LandmarkCandidate {
 }
 export class LandmarkFailure extends Error {
   constructor(readonly code: LandmarkError) { super(code); }
+}
+export interface LandmarkImage { url: string; source: string }
+
+/** Only Wikimedia-hosted raster files; arbitrary OSM image URLs are not loaded. */
+export function normalizeImage(body: unknown): LandmarkImage | null {
+  const features = record(body)?.features;
+  if (!Array.isArray(features)) throw new LandmarkFailure('RESPONSE_INVALID');
+  for (const feature of features) {
+    const media = record(record(record(feature)?.properties)?.wiki_and_media);
+    if (!media || typeof media.image !== 'string') continue;
+    try {
+      const url = new URL(media.image);
+      if (url.protocol !== 'https:' || url.hostname !== 'upload.wikimedia.org' || url.port || url.username || url.password || !/^\/wikipedia\/commons\/[a-f0-9]\/[a-f0-9]{2}\//.test(url.pathname) || !/\.(jpe?g|png|webp)$/i.test(url.pathname)) continue;
+      const filename = decodeURIComponent(url.pathname.split('/').at(-1)!);
+      if (url.pathname.includes('/thumb/')) continue;
+      return { url: url.href, source: `https://commons.wikimedia.org/wiki/File:${encodeURIComponent(filename)}` };
+    } catch { /* Missing or unsupported media leaves a text balloon. */ }
+  }
+  return null;
+}
+
+export async function fetchImage(id: string, key: string, signal: AbortSignal, fetcher: typeof fetch = fetch): Promise<LandmarkImage | null> {
+  const url = new URL('https://api.geoapify.com/v2/place-details');
+  url.search = new URLSearchParams({ id, apiKey: key, features: 'details', lang: 'ko' }).toString();
+  let response: Response;
+  try { response = await fetcher(url, { signal, credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'strict-origin' }); }
+  catch { throw new LandmarkFailure('NETWORK'); }
+  if (response.status === 401 || response.status === 403) throw new LandmarkFailure('AUTH');
+  if (response.status === 429) throw new LandmarkFailure('RATE_LIMIT');
+  if (!response.ok) throw new LandmarkFailure('PROVIDER_FAILURE');
+  let body: unknown;
+  try { body = await response.json(); } catch { throw new LandmarkFailure('RESPONSE_INVALID'); }
+  return normalizeImage(body);
 }
 const record = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 export const validCoordinate = (point: Coordinate) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude) && Math.abs(point.latitude) <= 90 && Math.abs(point.longitude) <= 180;

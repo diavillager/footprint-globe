@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Observation } from '../../domain/timeline';
 import { groupObservations } from './groups';
-import { fetchCandidates, geoapifyUrl, LandmarkFailure, normalizeCandidates } from './geoapify';
+import { fetchCandidates, normalizeImage, geoapifyUrl, LandmarkFailure, normalizeCandidates } from './geoapify';
 import { LandmarkSession, REQUEST_TIMEOUT_MS } from './session';
 import { buildTrip, trips } from '../../fixtures/travel';
 import { parseTimeline } from '../../parser';
@@ -80,7 +80,7 @@ describe('Geoapify 어댑터', () => {
 });
 
 describe('파일별 조회 수명', () => {
-  it('동의 전 0건, 동의만 해도 0건, 명시 조회와 캐시·선택·철회', async () => {
+  it('세션은 동의 전 요청을 막고 호출 결과 캐시·선택·철회를 관리한다', async () => {
     const lookup = vi.fn().mockResolvedValue(candidates);
     const session = new LandmarkSession('key', lookup), item = group();
     await session.query(item); expect(lookup).not.toHaveBeenCalled();
@@ -91,14 +91,14 @@ describe('파일별 조회 수명', () => {
     session.select(item.groupId, null); expect(session.selection(item.groupId)).toBeNull();
     session.revoke(); expect(session.state(item.groupId).status).toBe('idle'); expect(session.consent).toBe(false); expect(session.attempts).toBe(1);
   });
-  it('빈 결과도 재사용하며 파일당 32회를 넘지 않는다', async () => {
+  it('빈 결과도 재사용하며 이전 32회 제한 이후에도 전체 지점을 조회한다', async () => {
     const lookup = vi.fn().mockResolvedValue([]), session = new LandmarkSession('key', lookup);
     session.allow();
     await session.query(group()); await session.query(group());
     expect(lookup).toHaveBeenCalledTimes(1); expect(session.state(group().groupId).status).toBe('empty');
-    for (let i = 1; i <= 32; i++) await session.query(group(i));
-    expect(lookup).toHaveBeenCalledTimes(32);
-    expect(session.state(group(32).groupId)).toEqual({ status: 'error', code: 'REQUEST_LIMIT' });
+    for (let i = 1; i <= 40; i++) await session.query(group(i));
+    expect(lookup).toHaveBeenCalledTimes(41);
+    expect(session.state(group(40).groupId).status).toBe('empty');
   });
   it('단일 동시 요청·취소·파일 교체 뒤 늦은 응답을 차단한다', async () => {
     let resolve!: (value: typeof candidates) => void;
@@ -111,7 +111,7 @@ describe('파일별 조회 수명', () => {
     resolve(candidates); await pending;
     expect(session.state(group().groupId).status).toBe('idle'); expect(session.consent).toBe(false);
   });
-  it('10초 제한 뒤 늦은 응답을 무시하고 수동 재시도만 허용한다', async () => {
+  it('10초 제한 뒤 늦은 응답을 무시하고 자체적으로 재시도하지 않는다', async () => {
     vi.useFakeTimers();
     let resolve!: (value: typeof candidates) => void;
     const lookup = vi.fn(() => new Promise<typeof candidates>(done => { resolve = done; }));
@@ -128,5 +128,25 @@ describe('파일별 조회 수명', () => {
     await session.query(group()); await session.query(group(1));
     expect(lookup).toHaveBeenCalledTimes(1); expect(session.attempts).toBe(1);
     expect(session.state(group(1).groupId)).toEqual({ status: 'error', code });
+  });
+});
+
+describe('랜드마크 사진', () => {
+  it('Geoapify 이미지가 없거나 임의 호스트·실행 가능한 형식이면 텍스트로 남긴다', () => {
+    const wrap = (image: string) => ({ features: [{ properties: { wiki_and_media: { image } } }] });
+    expect(normalizeImage({ features: [] })).toBeNull();
+    for (const url of ['http://upload.wikimedia.org/x.jpg', 'https://localhost/x.png', 'https://upload.wikimedia.org.evil.test/x.jpg', 'https://upload.wikimedia.org/x.svg', 'javascript:alert(1)']) expect(normalizeImage(wrap(url))).toBeNull();
+    expect(normalizeImage(wrap('https://upload.wikimedia.org/wikipedia/commons/a/ab/Test.jpg'))).toEqual({ url: 'https://upload.wikimedia.org/wikipedia/commons/a/ab/Test.jpg', source: 'https://commons.wikimedia.org/wiki/File:Test.jpg' });
+  });
+  it('사진 상세 요청도 직렬화·캐시하고 파일 교체 후 늦은 응답을 무시한다', async () => {
+    let finish!: (value: { url: string; source: string }) => void;
+    const lookup = vi.fn(() => new Promise<{ url: string; source: string }>(resolve => { finish = resolve; }));
+    const session = new LandmarkSession('key', vi.fn().mockResolvedValue([]), lookup);
+    await session.queryImage('one'); expect(lookup).not.toHaveBeenCalled();
+    session.allow(); const pending = session.queryImage('one');
+    await session.query(group()); await session.queryImage('two');
+    expect(session.attempts).toBe(1); expect(lookup).toHaveBeenCalledTimes(1);
+    session.dispose(); finish({ url: 'test', source: 'test' }); await pending;
+    expect(session.image('one')).toBeNull(); expect(session.hasImageAttempt('one')).toBe(false);
   });
 });

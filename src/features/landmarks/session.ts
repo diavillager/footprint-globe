@@ -1,8 +1,7 @@
 import type { Coordinate } from '../../domain/timeline';
-import { fetchCandidates, LandmarkFailure, type LandmarkCandidate, type LandmarkError } from './geoapify';
+import { fetchCandidates, fetchImage, type LandmarkImage, LandmarkFailure, type LandmarkCandidate, type LandmarkError } from './geoapify';
 import type { ObservationGroup } from './groups';
 
-export const REQUEST_LIMIT = 32;
 export const REQUEST_TIMEOUT_MS = 10_000;
 export type QueryState =
   | { status: 'idle' | 'loading' | 'cancelled' }
@@ -11,25 +10,29 @@ export type QueryState =
 const idle: QueryState = { status: 'idle' };
 type Lookup = (coordinate: Coordinate, key: string, signal: AbortSignal) => Promise<LandmarkCandidate[]>;
 
-/** One instance per loaded dataset. No network activity until consent + explicit query(). */
+/** One instance per loaded dataset. Automatic diary requests start only after file-level consent. */
 export class LandmarkSession {
+  private images = new Map<string, LandmarkImage | null>();
+  private imageAttempts = new Set<string>();
   private states = new Map<string, QueryState>();
   private selections = new Map<string, string>();
   private listeners = new Set<() => void>();
   private revision = 0;
   private generation = 0;
-  private active: { groupId: string; controller: AbortController; timer: ReturnType<typeof setTimeout> } | null = null;
+  private active: { groupId: string; controller: AbortController; timer: ReturnType<typeof setTimeout>; media?: boolean } | null = null;
   private blocked: LandmarkError | null = null;
   consent = false;
   attempts = 0;
-  constructor(readonly key: string, private lookup: Lookup = fetchCandidates) {}
+  constructor(readonly key: string, private lookup: Lookup = fetchCandidates, private imageLookup = fetchImage) {}
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   snapshot = () => this.revision;
   private emit() { this.revision++; this.listeners.forEach(listener => listener()); }
   state(groupId: string): QueryState { return this.states.get(groupId) ?? idle; }
+  image(id: string) { return this.images.get(id) ?? null; }
+  hasImageAttempt(id: string) { return this.imageAttempts.has(id); }
   selection(groupId: string) { return this.selections.get(groupId) ?? null; }
   get busy() { return this.active !== null; }
-  get unavailable(): LandmarkError | null { return !this.key.trim() ? 'CONFIGURATION' : this.blocked ?? (this.attempts >= REQUEST_LIMIT ? 'REQUEST_LIMIT' : null); }
+  get unavailable(): LandmarkError | null { return !this.key.trim() ? 'CONFIGURATION' : this.blocked; }
   allow() { this.consent = true; this.emit(); }
   select(groupId: string, candidateId: string | null) {
     const state = this.state(groupId);
@@ -42,13 +45,33 @@ export class LandmarkSession {
     if (this.active) {
       clearTimeout(this.active.timer);
       this.active.controller.abort();
-      this.states.set(this.active.groupId, { status: 'cancelled' });
+      if (!this.active.media) this.states.set(this.active.groupId, { status: 'cancelled' });
       this.active = null;
       this.emit();
     }
   }
-  revoke() { this.cancel(); this.consent = false; this.states.clear(); this.selections.clear(); this.emit(); }
+  revoke() { this.cancel(); this.consent = false; this.states.clear(); this.selections.clear(); this.images.clear(); this.imageAttempts.clear(); this.emit(); }
   dispose() { this.revoke(); this.attempts = 0; this.blocked = null; }
+  async queryImage(id: string): Promise<void> {
+    if (!this.consent || this.busy || this.unavailable || this.imageAttempts.has(id)) return;
+    this.imageAttempts.add(id);
+    const generation = ++this.generation, controller = new AbortController();
+    this.attempts++;
+    const timer = setTimeout(() => {
+      if (generation !== this.generation) return;
+      this.generation++; controller.abort(); this.active = null; this.emit();
+    }, REQUEST_TIMEOUT_MS);
+    this.active = { groupId: '', controller, timer, media: true }; this.emit();
+    try {
+      const image = await this.imageLookup(id, this.key, controller.signal);
+      if (generation === this.generation) this.images.set(id, image);
+    } catch (error) {
+      if (generation === this.generation && error instanceof LandmarkFailure && (error.code === 'AUTH' || error.code === 'RATE_LIMIT')) this.blocked = error.code;
+    } finally {
+      clearTimeout(timer);
+      if (generation === this.generation) { this.active = null; this.emit(); }
+    }
+  }
   async query(group: ObservationGroup): Promise<void> {
     const previous = this.state(group.groupId);
     if (!this.consent || this.active || previous.status === 'success' || previous.status === 'empty') return;
