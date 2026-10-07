@@ -17,7 +17,7 @@ let stage = 'startup';
    stage = server === dev ? 'development' : 'production';
    const origin = server.resolvedUrls.local[0];
    const context = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
-   let requests = 0, images = 0, unexpected = 0, errors = 0, mode = 'success', held, collisionSearches = 0;
+   let requests = 0, images = 0, unexpected = 0, errors = 0, mode = 'success', held, landmarks = [];
    await context.route('**/*', async route => {
     const req = route.request(), url = new URL(req.url());
     if (url.origin === new URL(origin).origin) return route.continue();
@@ -50,10 +50,13 @@ let stage = 'startup';
      return route.fulfill({ json: { features: [{ properties: { wiki_and_media: { wikidata: 'Q123' } } }] } });
     }
     assert.equal(url.pathname, '/v2/places');
-    assert.deepEqual([...url.searchParams.keys()].sort(), ['apiKey', 'bias', 'categories', 'filter', 'lang', 'limit']);
-    const coordinates = url.searchParams.get('filter').slice(7).split(',').slice(0, 2).map(Number);
-    if (mode === 'collision' && collisionSearches++ === 0) return route.fulfill({json:{features:[{properties:{place_id:'synthetic-no-photo',name:'사진 없는 앞 지점',categories:['tourism.sights']},geometry:{type:'Point',coordinates}}]}});
-    return route.fulfill({ json: { features: mode === 'empty' ? [] : [{ properties: { place_id: 'synthetic-far', name: '더 먼 명소', categories: ['tourism.sights'] }, geometry: { type: 'Point', coordinates: [coordinates[0], coordinates[1] + .001] } }, { properties: { place_id: mode === 'gallery' ? 'gallery-' + coordinates[0] + '-' + coordinates[1] : 'synthetic-one', name: mode === 'gallery' ? '사진 장소 ' + coordinates[1] : '가상 박물관', categories: ['entertainment.museum'] }, geometry: { type: 'Point', coordinates } }] } });
+    assert.deepEqual([...url.searchParams.keys()].sort(), ['apiKey', 'categories', 'filter', 'lang', 'limit', 'offset']);
+    assert.ok(url.searchParams.get('filter').startsWith('rect:'));
+    const [west,south,east,north] = url.searchParams.get('filter').slice(5).split(',').map(Number);
+    const offset = Number(url.searchParams.get('offset'));
+    return route.fulfill({json:{features:mode === 'empty' ? [] : landmarks.filter(f => {
+     const [x,y] = f.geometry.coordinates; return x >= west && x <= east && y >= south && y <= north;
+    }).slice(offset,offset+500)}});
    });
    const page = await context.newPage(); page.setDefaultTimeout(20000);
    page.on('pageerror', () => errors++);
@@ -61,6 +64,13 @@ let stage = 'startup';
    await page.goto(origin);
    await page.getByText('상세 지도 준비 완료', { exact: false }).waitFor({ state: 'attached' });
    const load = async timeline => {
+    const coords = [...new Set(timeline.rawSignals.map(s => s.position.LatLng))].map(s => s.match(/-?[\d.]+/g).map(Number).reverse());
+    landmarks = coords.flatMap((coordinates,i) => {
+     const id = mode === 'collision' && i === 0 ? 'synthetic-no-photo' : 'synthetic-' + i;
+     const name = mode === 'collision' && i === 0 ? '사진 없는 앞 지점' : mode === 'gallery' ? '사진 장소 ' + i : '가상 박물관';
+     return [{properties:{place_id:id,name,categories:['entertainment.museum']},geometry:{type:'Point',coordinates}},
+      {properties:{place_id:'far-'+i,name:'더 먼 명소',categories:['tourism.sights']},geometry:{type:'Point',coordinates:[coordinates[0],coordinates[1]+.001]}}];
+    });
     await page.getByLabel('JSON 올리기', { exact: true }).setInputFiles({ name: 'CANARY.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(timeline)) });
     await page.locator('.import-status').filter({ hasText: `관측 ${timeline.rawSignals.length.toLocaleString()}개` }).waitFor();
     assert.equal(await page.locator('.travel-diary').count(), 0);
@@ -92,7 +102,7 @@ let stage = 'startup';
     await page.getByRole('heading', { name: '주변 랜드마크 후보', exact: true }).waitFor();
     assert.equal(await page.getByRole('dialog', {name:'기록 상세'}).evaluate(dialog => { const r = dialog.getBoundingClientRect(); return Math.abs(r.x + r.width / 2 - innerWidth / 2) < 2; }), true);
     await page.screenshot({path:`node_modules/.cache/diary-detail-${stage}.png`});
-    await page.getByRole('button', { name: /더 먼 명소/ }).click();
+    await page.getByRole('button', { name: /더 먼 명소/ }).first().click();
     await page.getByRole('region', {name:'선택한 장소 상세'}).getByRole('heading', {name:'더 먼 명소',exact:true}).waitFor();
     assert.equal(await page.getByRole('dialog').getByText('조회 동의 철회·결과 지우기', {exact:true}).count(), 0);
     assert.doesNotMatch(await page.getByRole('dialog').textContent(), /tourism\.|entertainment\./);
@@ -110,9 +120,9 @@ let stage = 'startup';
     const stopped = requests; await page.waitForTimeout(400); assert.equal(requests, stopped);
    }
    const timeline = count => ({ rawSignals: Array.from({ length: count }, (_, i) => ({ position: { LatLng: `${37 + i * .01}°, 127°`, timestamp: new Date(Date.UTC(2040, 0, 1) + i * 60000).toISOString() } })) });
-   mode = 'empty'; const before = requests; await load(timeline(35)); await consent();
+   mode = 'empty'; const before = requests; const dense = timeline(35); dense.rawSignals.forEach((p,i) => {p.position.LatLng = `${(37.005 + i * .00001).toFixed(6)}°, 127.005°`;}); await load(dense); await consent();
    await page.getByRole('button', { name: '장소 매핑 진행 상태', exact: true }).hover();
-   await page.getByText('조회 처리 35/35개', { exact: false }).waitFor(); assert.equal(requests - before, 35);
+   await page.getByText('포인트 대조 35/35개', { exact: false }).waitFor(); assert.ok(requests - before < 10, 'dense observations reuse regional requests');
    assert.equal(await page.locator('.diary-card').count(), 0); await page.keyboard.press('Escape');
    await page.getByRole('button', {name:'위치 기록',exact:true}).click();
    await page.locator('.observation-list button').first().click();
@@ -122,8 +132,8 @@ let stage = 'startup';
    for (const failure of ['auth', 'rate', 'offline']) {
     mode = failure; await load(timeline(2)); const before = requests; await consent();
     await page.getByRole('button', { name: '장소 매핑 진행 상태', exact: true }).hover();
-    await page.getByText(failure === 'offline' ? '조회 처리 2/2개' : '조회 중단', { exact: false }).first().waitFor();
-    await page.waitForTimeout(500); assert.equal(requests - before, failure === 'offline' ? 2 : 1);
+    await page.getByText(failure === 'offline' ? '포인트 대조 2/2개' : '조회 중단', { exact: false }).first().waitFor();
+    await page.waitForTimeout(500); if (failure === 'offline') assert.ok(requests - before > 0); else assert.equal(requests - before, 1);
     assert.equal(await page.locator('.diary-card').count(), 0); await page.keyboard.press('Escape');
    }
    mode = 'hold'; await load(timeline(2)); await consent(); await page.waitForTimeout(500);
@@ -178,7 +188,7 @@ let stage = 'startup';
    assert.equal(progressNumber.color, await page.getByRole('button',{name:'UTC',exact:true}).evaluate(el => getComputedStyle(el).color));
    assert.equal(await page.locator('.progress-value').evaluate(el => getComputedStyle(el).strokeWidth), '6px');
 
-   mode = 'collision'; collisionSearches = 0;
+   mode = 'collision';
    const overlapping = timeline(2); overlapping.rawSignals[1].position.LatLng = '37°, 127.00001°';
    overlapping.rawSignals[1].position.timestamp = '2040-01-01T03:00:00Z';
    await load(overlapping); await consent();
@@ -203,10 +213,10 @@ let stage = 'startup';
    mode = 'imagefail'; await load(timeline(2)); await consent();
    await page.waitForTimeout(1800);
    await page.getByRole('button', {name:'장소 매핑 진행 상태',exact:true}).hover();
-   await page.locator('.mapping-progress-detail p').filter({hasText:/사진.*실패 1/}).waitFor();
+   await page.locator('.mapping-progress-detail p').filter({hasText:/사진.*실패 2/}).waitFor();
    assert.ok(images > 0); assert.equal(errors, 0); assert.equal(unexpected, 0);
    assert.equal(await page.evaluate(() => localStorage.length + sessionStorage.length), 0);
-   await context.close(); console.log(stage + ' PASS: automatic diary, four trips, photos, >32 queries, errors, cancellation, mobile');
+   await context.close(); console.log(stage + ' PASS: automatic diary, four trips, photos, regional reuse, errors, cancellation, mobile');
   }
  } finally { await browser.close(); await dev.close(); await new Promise(resolve => production.httpServer.close(resolve)); }
 })().catch(error => { console.error('Diary smoke failed at ' + stage + ': ' + error.message.replace(/https?:\/\/\S+/g, '[URL]')); process.exitCode = 1; });

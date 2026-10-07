@@ -5,7 +5,6 @@ import type { ImportRequest } from './importFile';
 import { connectAll, distribution } from './analysis';
 import { ObservationList } from './ObservationList';
 import type { DisplayTimezone } from './observationTime';
-import { groupObservations } from '../landmarks/groups';
 import { LandmarkSession } from '../landmarks/session';
 import { diaryCandidate, MappingConsent, MappingProgress, usePlaceMapping } from '../landmarks/TravelDiary';
 import { LandmarkPanel } from '../landmarks/LandmarkPanel';
@@ -62,10 +61,13 @@ export function LocalPreview() {
   const stop = () => { worker.current?.terminate(); worker.current = null; setBusy(false); };
   useEffect(() => () => worker.current?.terminate(), []);
   const data = result?.ok ? result.data : null;
-  const landmarkSession = useMemo(() => new LandmarkSession(geoapifyKey), [data?.datasetId]);
-  useEffect(() => () => landmarkSession.dispose(), [landmarkSession]);
-  const groups = useMemo(() => data ? groupObservations(data.datasetId, data.observations) : [], [data]);
-  usePlaceMapping(groups, landmarkSession);
+  const landmarkSession = useMemo(() => new LandmarkSession(geoapifyKey), [data]);
+  useEffect(() => {
+    if (data) landmarkSession.prepareRegions(data.datasetId, data.observations);
+    return () => landmarkSession.dispose();
+  }, [landmarkSession, data]);
+  usePlaceMapping(landmarkSession);
+  const groups = landmarkSession.groups;
   const groupsByRepresentative = useMemo(() => new Map(groups.map(group => [group.representative.id, group])), [groups]);
   const groupedPoints = useMemo(() => groups.map(group => group.representative), [groups]);
   const groupedConnections = useMemo(() => connectAll(groupedPoints), [groupedPoints]);
@@ -113,7 +115,7 @@ export function LocalPreview() {
         <MappingProgress groups={groups} session={landmarkSession} onShowPhoto={point => { setViewMode('mapped'); setCandidates(null); selectObservation(point); }} onStop={() => landmarkSession.stopMapping()} />
         <button aria-label="이용 안내" aria-haspopup="dialog" onClick={() => setPanel('info')}>ⓘ</button>
       </nav>
-      <div className="import-status" role="status" aria-live="polite">{busy ? '로컬에서 위치·시각을 검사하고 정렬하는 중입니다…' : !result ? 'JSON을 올려 발자취를 확인하세요.' : result.ok ? '관측 ' + result.counts.accepted.toLocaleString() + '개 · 연결 ' + connections.length.toLocaleString() + '개' + (' · 여행 지점 ' + groups.length.toLocaleString() + '개') : '[' + result.code + '] ' + errors[result.code]}</div>
+      <div className="import-status" role="status" aria-live="polite">{busy ? '로컬에서 위치·시각을 검사하고 정렬하는 중입니다…' : !result ? 'JSON을 올려 발자취를 확인하세요.' : result.ok ? '관측 ' + result.counts.accepted.toLocaleString() + '개 · 연결 ' + connections.length.toLocaleString() + '개' + (groups.length ? ' · 장소별 지점 ' + groups.length.toLocaleString() + '개' : '') : '[' + result.code + '] ' + errors[result.code]}</div>
     </div>
     {!panel && selectedObservation && showPlaceDetails && <Panel title="기록 상세" onClose={() => setSelectedId(null)}>
       <div className="record-detail">
@@ -121,7 +123,7 @@ export function LocalPreview() {
         <p>{formatDiaryTime(selectedObservation.time, timezone)}</p>
         <p>위도 {selectedObservation.coordinate.latitude} · 경도 {selectedObservation.coordinate.longitude}</p>
         {candidates && candidates.length > 1 && <div className="detail-neighbors"><p>겹친 지점 {candidateIndex + 1} / {candidates.length}</p><button disabled={candidateIndex <= 0} onClick={() => setSelectedId(candidates[candidateIndex - 1]!.id)}>이전 지점</button><button disabled={candidateIndex >= candidates.length - 1} onClick={() => setSelectedId(candidates[candidateIndex + 1]!.id)}>다음 지점</button></div>}
-        {viewMode === 'mapped' && groupsByRepresentative.has(selectedObservation.id) && <><p>관측 {groupsByRepresentative.get(selectedObservation.id)!.observationCount}개 · 마지막 관측 {formatDiaryTime(groupsByRepresentative.get(selectedObservation.id)!.end, timezone)}</p><LandmarkPanel group={groupsByRepresentative.get(selectedObservation.id)!} session={landmarkSession} /></>}
+        {viewMode === 'mapped' && groupsByRepresentative.has(selectedObservation.id) && <><p>관측 {groupsByRepresentative.get(selectedObservation.id)!.observationCount}개 · 첫 관측 {formatDiaryTime(groupsByRepresentative.get(selectedObservation.id)!.start, timezone)} · 마지막 관측 {formatDiaryTime(groupsByRepresentative.get(selectedObservation.id)!.end, timezone)}</p><LandmarkPanel group={groupsByRepresentative.get(selectedObservation.id)!} session={landmarkSession} /></>}
       </div>
     </Panel>}
     {panel && <Panel title={{ points: '위치 기록', distribution: '기록 분포', mapping: '장소 매핑 안내', info: '이용 안내' }[panel]} onClose={() => setPanel(null)}>
@@ -131,7 +133,7 @@ export function LocalPreview() {
       {panel === 'distribution' && distributionMode === 'time' && <Histogram title="시간차 분포" values={times} edges={timeEdges} labels={timeLabels} unit="분" />}
       {panel === 'distribution' && distributionMode === 'distance' && <><Histogram title="거리 분포" values={distances} edges={distanceEdges} labels={distanceLabels} unit="km" /><p>이웃 관측 사이의 지표면 최단 거리이며 실제 이동 거리나 도로 길이가 아닙니다.</p></>}
       {panel === 'info' && <><p>JSON은 이 탭에서만 처리하며 전송·저장하지 않습니다. rawSignals 형식, 최대 64 MiB·100,000개 신호를 지원합니다.</p><p>MapTiler 지도 요청으로 IP 주소와 열람 지역·확대 수준이 서비스에 전달될 수 있습니다. JSON 본문·파일명·관측 시각은 전송하지 않습니다.</p><p>연결선은 기록 지점 사이의 흐름이며 실제 이동 경로가 아닙니다. 지우기·새로고침·탭 종료 시 기록은 유지되지 않습니다.</p>{result?.counts && <p>입력 신호 {result.counts.input.toLocaleString()}개 · 위치 외 신호 제외 {result.counts.ignoredSignals.toLocaleString()}개 · 잘못된 위치 제외 {result.counts.invalidPositions.toLocaleString()}개. 제외된 기록 앞뒤의 유효 위치가 연결됩니다.</p>}</>}
-      {panel === 'info' && <><p>JSON 등록 즉시 첫 관측 기준 100m·인접 공백 120분 이내의 기록을 자동으로 묶습니다. 원본 목록·분포는 유지하며 관측 시간 범위는 확정 체류 시간이 아닙니다.</p><p>파일별 동의 후 시간순으로 주변 명소와 사진 정보를 자동 조회합니다. 가장 가까운 후보를 추정 표시하며 실제 방문을 확정하지 않습니다. 동시 최대 3건·250ms 간격·파일당 횟수 제한 없음·요청당 10초 제한이며 자동 재시도하지 않습니다. 사용량 제한·인증 오류 때 자동 조회를 중지합니다. 사진은 Geoapify의 이미지·Commons 파일 참조 또는 Wikidata 대표 사진을 통해 찾습니다. Wikimedia에는 파일명이나 장소 ID만 전달하고 관측 좌표·시각은 보내지 않습니다. 사진 조회 상태는 상단 원형 진행 표시에서 확인할 수 있습니다. 추가 조회 중단은 진행 중인 요청을 취소하고 이미 조회한 결과를 유지합니다. 기록과 조회 결과의 삭제는 JSON 올리기 옆 지우기를 사용합니다.</p></>}
+      {panel === 'info' && <><p>기록 주변 300m를 덮는 구역의 장소를 먼저 조회하고 원본 포인트와 대조합니다. 같은 장소에 연결된 연속 기록에서 장소와 가장 가까운 관측을 대표점으로 정하고, 그 주변 100m 이내를 묶습니다. 다른 장소로 이동하거나 인접 공백이 120분을 넘으면 분리합니다. 원본 목록·분포는 유지하며 관측 시간 범위는 확정 체류 시간이 아닙니다.</p><p>파일별 동의 후 검색 구역의 경계 좌표를 Geoapify로 보내고, 중복 장소는 재사용합니다. 지역 검색은 모든 장소의 완전한 수집을 보장하지 않으며 실패한 지역은 후보 없음과 구분합니다. 원본 포인트 대조와 묶기 후 연결된 장소의 사진을 조회합니다. 가장 가까운 후보를 추정 표시하며 실제 방문을 확정하지 않습니다. 동시 최대 3건·250ms 간격·파일당 횟수 제한 없음·요청당 10초 제한이며 자동 재시도하지 않습니다. 사용량 제한·인증 오류 때 자동 조회를 중지합니다. 사진은 Geoapify의 이미지·Commons 파일 참조 또는 Wikidata 대표 사진을 통해 찾습니다. Wikimedia에는 파일명이나 장소 ID만 전달하고 관측 좌표·시각은 보내지 않습니다. 사진 조회 상태는 상단 원형 진행 표시에서 확인할 수 있습니다. 추가 조회 중단은 진행 중인 요청을 취소하고 이미 조회한 결과를 유지합니다. 기록과 조회 결과의 삭제는 JSON 올리기 옆 지우기를 사용합니다.</p></>}
 
     </Panel>}
   </main>;

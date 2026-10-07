@@ -2,7 +2,7 @@ import type { Coordinate } from '../../domain/timeline';
 import { separationKm } from '../preview/analysis';
 
 export const SEARCH_POLICY = { radiusMeters: 300, limit: 10, categories: ['tourism.attraction', 'tourism.sights', 'entertainment.museum'] } as const;
-export type LandmarkError = 'CONFIGURATION' | 'AUTH' | 'RATE_LIMIT' | 'NETWORK' | 'TIMEOUT' | 'RESPONSE_INVALID' | 'PROVIDER_FAILURE';
+export type LandmarkError = 'CONFIGURATION' | 'AUTH' | 'RATE_LIMIT' | 'NETWORK' | 'TIMEOUT' | 'RESPONSE_INVALID' | 'PROVIDER_FAILURE' | 'SEARCH_INCOMPLETE';
 export interface LandmarkCandidate {
   readonly provider: 'geoapify';
   readonly providerPlaceId: string;
@@ -174,4 +174,53 @@ export async function fetchCandidates(point: Coordinate, key: string, signal: Ab
   let body: unknown;
   try { body = await response.json(); } catch { throw new LandmarkFailure('RESPONSE_INVALID'); }
   return normalizeCandidates(body, point);
+}
+
+
+// Region discovery returns places independently of any observation or distance ranking.
+export type LandmarkPlace = Omit<LandmarkCandidate, 'distanceMeters'>;
+export interface RegionBounds { west: number; south: number; east: number; north: number }
+export interface RegionPage { places: LandmarkPlace[]; rawCount: number }
+export const REGION_PAGE_SIZE = 500;
+export function regionUrl(bounds: RegionBounds, offset: number, key: string): URL {
+  if (!key.trim()) throw new LandmarkFailure('CONFIGURATION');
+  if (![bounds.west, bounds.south, bounds.east, bounds.north].every(Number.isFinite)
+    || bounds.west < -180 || bounds.east > 180 || bounds.south < -90 || bounds.north > 90
+    || bounds.west >= bounds.east || bounds.south >= bounds.north || !Number.isInteger(offset) || offset < 0) throw new LandmarkFailure('RESPONSE_INVALID');
+  const url = new URL('https://api.geoapify.com/v2/places');
+  url.search = new URLSearchParams({apiKey: key, categories: SEARCH_POLICY.categories.join(','),
+    filter: `rect:${bounds.west},${bounds.south},${bounds.east},${bounds.north}`,
+    limit: String(REGION_PAGE_SIZE), offset: String(offset), lang: 'ko'}).toString();
+  return url;
+}
+export function normalizeRegionPage(body: unknown, bounds: RegionBounds): RegionPage {
+  const features = record(body)?.features;
+  if (!Array.isArray(features) || features.length > REGION_PAGE_SIZE) throw new LandmarkFailure('RESPONSE_INVALID');
+  const places: LandmarkPlace[] = [], seen = new Set<string>();
+  for (const value of features) {
+    const feature = record(value), properties = record(feature?.properties), geometry = record(feature?.geometry);
+    if (!properties || geometry?.type !== 'Point' || !Array.isArray(geometry.coordinates)) continue;
+    const [longitude, latitude] = geometry.coordinates;
+    if (typeof longitude !== 'number' || typeof latitude !== 'number' || !validCoordinate({longitude, latitude})) continue;
+    if (longitude < bounds.west || longitude > bounds.east || latitude < bounds.south || latitude > bounds.north) continue;
+    const name = typeof properties.name === 'string' ? properties.name.trim().slice(0, 160) : '';
+    const id = properties.place_id;
+    if (!name || !/[\p{L}\p{N}]/u.test(name) || typeof id !== 'string' || !id.trim() || id.length > 2048 || seen.has(id)) continue;
+    seen.add(id);
+    const categories = Array.isArray(properties.categories) ? properties.categories.filter((item): item is string => typeof item === 'string' && item.length <= 120).slice(0, 20) : [];
+    places.push({provider:'geoapify', providerPlaceId:id, name, coordinate:{latitude,longitude}, categories,
+      attribution:'Powered by Geoapify · © OpenStreetMap contributors'});
+  }
+  return {places, rawCount:features.length};
+}
+export async function fetchRegion(bounds: RegionBounds, offset: number, key: string, signal: AbortSignal, fetcher: typeof fetch = fetch): Promise<RegionPage> {
+  let response: Response;
+  try { response = await fetcher(regionUrl(bounds, offset, key), {signal, credentials:'omit', cache:'no-store', redirect:'error', referrerPolicy:'strict-origin'}); }
+  catch (error) { if (error instanceof LandmarkFailure) throw error; throw new LandmarkFailure('NETWORK'); }
+  if (response.status === 401 || response.status === 403) throw new LandmarkFailure('AUTH');
+  if (response.status === 429) throw new LandmarkFailure('RATE_LIMIT');
+  if (!response.ok) throw new LandmarkFailure('PROVIDER_FAILURE');
+  let body: unknown;
+  try { body = await response.json(); } catch { throw new LandmarkFailure('RESPONSE_INVALID'); }
+  return normalizeRegionPage(body, bounds);
 }

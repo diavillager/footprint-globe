@@ -6,6 +6,7 @@ import { LandmarkSession } from './session';
 import type { LandmarkError } from './geoapify';
 
 const messages: Record<LandmarkError, string> = {
+  SEARCH_INCOMPLETE: '이 지역의 장소 정보를 충분히 조회하지 못했습니다.',
   CONFIGURATION: '랜드마크 검색 키가 설정되지 않았습니다.', AUTH: '검색 서비스의 접근 설정을 확인해야 합니다.',
   RATE_LIMIT: '검색 서비스의 사용량 제한에 도달했습니다.',
   NETWORK: '검색 서비스에 연결하지 못했습니다.', TIMEOUT: '검색 응답이 10초 안에 도착하지 않았습니다.',
