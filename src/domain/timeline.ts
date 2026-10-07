@@ -13,6 +13,8 @@ export interface Observation {
   readonly id: ObservationId;
   readonly coordinate: Coordinate;
   readonly time: Instant;
+  /** Optional reported horizontal accuracy in metres; never inferred. */
+  readonly accuracyMeters?: number;
 }
 export interface RecordedVisit {
   readonly id: VisitId;

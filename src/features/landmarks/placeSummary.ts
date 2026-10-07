@@ -29,7 +29,7 @@ export interface PlaceSummary {
   byObservation: Map<ObservationId, PlaceNode>;
 }
 /** Display only. Keep record identity while merging mapped places and nearby unmatched waypoints. */
-export function summarizePlaces(groups: readonly ObservationGroup[], candidate: (group: ObservationGroup) => LandmarkCandidate | null): PlaceSummary {
+export function summarizePlaces(groups: readonly ObservationGroup[], candidate: (group: ObservationGroup) => LandmarkCandidate | null, breakBefore: ReadonlySet<ObservationId> = new Set()): PlaceSummary {
   const nodes = new Map<string, PlaceNode>(), distances = new Map<string, number>();
   const byObservation = new Map<ObservationId, PlaceNode>();
   for (const group of groups) {
@@ -66,7 +66,7 @@ export function summarizePlaces(groups: readonly ObservationGroup[], candidate: 
   const route = groups.map(group => ({group,node:routeNodes.get(group.representative.id)!}));
   for (let index = 1; index < route.length; index++) {
     const previous = route[index-1]!, {group,node} = route[index]!, from = previous.node;
-    if (from !== node) {
+    if (from !== node && !breakBefore.has(group.sourceObservationIds[0]!)) {
       const key = JSON.stringify([from.placeId,node.placeId].sort());
       let edge = edges.get(key);
       if (!edge) { edge = {key,from,to:node,transitions:[]}; edges.set(key,edge); }

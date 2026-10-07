@@ -1,3 +1,5 @@
+import { projectLocations, type QualityReport } from './locationQuality';
+import { QualityControls } from './QualityControls';
 import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { PREVIEW_LIMITS } from '../../parser';
 import type { ParseResult, ImportError, Observation, ObservationId } from '../../domain/timeline';
@@ -12,6 +14,7 @@ import { summarizePlaces } from '../landmarks/placeSummary';
 import { LandmarkRail, mappedStops } from '../landmarks/LandmarkRail';
 import { formatDiaryTime } from './observationTime';
 const empty = [] as const;
+const emptyQuality: QualityReport = { suspects: new Map(), conflicts: new Set() };
 const MapTilerGlobe = lazy(() => import('./MapTilerGlobe'));
 
 const errors: Record<ImportError, string> = {
@@ -51,7 +54,7 @@ export function LocalPreview() {
   const [result, setResult] = useState<ParseResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [timezone, setTimezone] = useState<DisplayTimezone>('UTC');
-  const [panel, setPanel] = useState<'points' | 'distribution' | 'mapping' | 'info' | null>(null);
+  const [panel, setPanel] = useState<'points' | 'distribution' | 'mapping' | 'quality' | 'info' | null>(null);
   const [viewMode, setViewMode] = useState<'raw' | 'mapped'>('raw');
   const [distributionMode, setDistributionMode] = useState<'time' | 'distance'>('time');
   const [selectedId, setSelectedId] = useState<ObservationId | null>(null);
@@ -63,17 +66,22 @@ export function LocalPreview() {
   const stop = () => { worker.current?.terminate(); worker.current = null; setBusy(false); };
   useEffect(() => () => worker.current?.terminate(), []);
   const data = result?.ok ? result.data : null;
-  const landmarkSession = useMemo(() => createWikimediaSession(), [data]);
+  const [quality, setQuality] = useState<QualityReport>(emptyQuality);
+  const [hideSuspects, setHideSuspects] = useState(true);
+  const [restored, setRestored] = useState<ReadonlySet<ObservationId>>(new Set());
+  const projection = useMemo(() => projectLocations(data?.observations ?? empty, quality, hideSuspects, restored), [data,quality,hideSuspects,restored]);
+  const breakBefore = useMemo(() => new Set(projection.breaks.keys()), [projection]);
+  const landmarkSession = useMemo(() => createWikimediaSession(), [projection]);
   useEffect(() => {
-    if (data) landmarkSession.prepareRegions(data.datasetId, data.observations);
+    if (data) landmarkSession.prepareRegions(data.datasetId, projection.points, breakBefore);
     return () => landmarkSession.dispose();
-  }, [landmarkSession, data]);
+  }, [landmarkSession, data, projection, breakBefore]);
   usePlaceMapping(landmarkSession);
   const groups = landmarkSession.groups;
   const groupsByRepresentative = useMemo(() => new Map(groups.map(group => [group.representative.id, group])), [groups]);
   const stops = useMemo(() => mappedStops(groups, group => diaryCandidate(landmarkSession, group)), [groups, landmarkSession]);
   const mappedGroups = useMemo(() => stops.map(stop => stop.group), [stops]);
-  const placeSummary = useMemo(() => summarizePlaces(groups, group => diaryCandidate(landmarkSession,group)), [groups,landmarkSession]);
+  const placeSummary = useMemo(() => summarizePlaces(groups, group => diaryCandidate(landmarkSession,group), breakBefore), [groups,landmarkSession,breakBefore]);
   const summaryPoints = useMemo(() => placeSummary.nodes.map(node => node.point), [placeSummary]);
   const selectedObservation = data?.observations.find(point => point.id === selectedId) ?? null;
   const selectedGroup = viewMode === 'mapped' && selectedId ? groupsByRepresentative.get(selectedId) : undefined;
@@ -98,22 +106,29 @@ export function LocalPreview() {
   const load = (file: File | undefined) => {
     if (!file) return;
     stop(); landmarkSession.dispose(); resetSelection(); setResult(null); setPanel(null); setViewMode('raw');
+    setQuality(emptyQuality); setHideSuspects(true); setRestored(new Set());
     if (file.size > PREVIEW_LIMITS.bytes) { setResult({ ok: false, code: 'INPUT_LIMIT' }); return; }
     setBusy(true);
     try {
       const current = new Worker(new URL('./preview.worker.ts', import.meta.url), { type: 'module' });
       worker.current = current;
-      current.onmessage = (event: MessageEvent<ParseResult>) => {
+      current.onmessage = (event: MessageEvent<ParseResult & { quality: QualityReport | null }>) => {
         if (worker.current !== current) return;
-        setResult(event.data); if (event.data.ok) setPanel('mapping'); stop();
+        setQuality(event.data.quality ?? emptyQuality); setResult(event.data); if (event.data.ok) setPanel('mapping'); stop();
       };
       current.onerror = event => { event.preventDefault(); if (worker.current === current) { setResult({ ok: false, code: 'FILE_READ_FAILED' }); stop(); } };
       current.onmessageerror = () => { if (worker.current === current) { setResult({ ok: false, code: 'FILE_READ_FAILED' }); stop(); } };
       current.postMessage({ file, datasetId: `dataset:${crypto.randomUUID()}` } satisfies ImportRequest);
     } catch { stop(); setResult({ ok: false, code: 'FILE_READ_FAILED' }); }
   };
+  const changeQuality = (change: () => void) => {
+    landmarkSession.dispose(); resetSelection(); setViewMode('raw'); change();
+  };
+  const restore = (id: ObservationId) => changeQuality(() => setRestored(previous => {
+    const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next;
+  }));
   return <main className="map-app">
-    <GlobeBoundary resetKey={data?.datasetId ?? 'empty'}><Suspense fallback={<p className="map-message">지도를 준비하고 있습니다…</p>}><MapTilerGlobe points={viewMode === 'raw' ? data?.observations ?? empty : summaryPoints} connections={viewMode === 'raw' ? connections : empty} summary={viewMode === 'mapped' ? placeSummary : null} groups={viewMode === 'mapped' ? mappedGroups : empty}
+    <GlobeBoundary resetKey={data?.datasetId ?? 'empty'}><Suspense fallback={<p className="map-message">지도를 준비하고 있습니다…</p>}><MapTilerGlobe points={viewMode === 'raw' ? projection.points : summaryPoints} connections={viewMode === 'raw' ? projection.connections : empty} summary={viewMode === 'mapped' ? placeSummary : null} groups={viewMode === 'mapped' ? mappedGroups : empty}
       originalPoints={data?.observations ?? empty} landmarkSession={landmarkSession}
       selectedObservation={selectedObservation} focusRevision={focusRevision} focusMode={focusMode} timezone={timezone}
       showPointPopup={!panel && !mappedSelection} candidates={candidates ?? empty} onClose={() => setSelectedId(null)}
@@ -123,15 +138,17 @@ export function LocalPreview() {
       <nav className="toolbar" aria-label="발자취 도구">
         <span className="brand">FOOTPRINT</span>
         <label className="file-button">JSON 올리기<input aria-label="JSON 올리기" type="file" accept=".json,application/json" onChange={e => { const file = e.currentTarget.files?.[0]; e.currentTarget.value = ''; load(file); }} /></label>
-        <button onClick={() => { stop(); landmarkSession.dispose(); resetSelection(); setResult(null); setPanel(null); setViewMode('raw'); }} disabled={!result && !busy}>{busy ? '처리 취소' : '지우기'}</button>
+        <button onClick={() => { stop(); landmarkSession.dispose(); resetSelection(); setResult(null); setQuality(emptyQuality); setRestored(new Set()); setHideSuspects(true); setPanel(null); setViewMode('raw'); }} disabled={!result && !busy}>{busy ? '처리 취소' : '지우기'}</button>
         <div className="timezone-switch" role="group" aria-label="표시 시간대"><button aria-pressed={timezone === 'UTC'} onClick={() => setTimezone('UTC')}>UTC</button><button aria-pressed={timezone === 'Asia/Seoul'} onClick={() => setTimezone('Asia/Seoul')}>KST</button></div>
         <div className="timezone-switch" role="group" aria-label="경로 보기"><button disabled={!data} aria-pressed={viewMode === 'raw'} onClick={() => { resetSelection(); setViewMode('raw'); }}>원본 경로</button><button disabled={!landmarkSession.mappingComplete(groups)} title={landmarkSession.mappingComplete(groups) ? '묶인 기록과 주변 장소 보기' : '장소·사진 매핑이 완료되면 사용할 수 있습니다'} aria-pressed={viewMode === 'mapped'} onClick={() => { resetSelection(); setViewMode('mapped'); }}>장소별 보기</button></div>
         <button disabled={!data} aria-haspopup="dialog" onClick={() => setPanel('points')}>위치 기록</button>
         <button disabled={!data} aria-haspopup="dialog" onClick={() => setPanel('distribution')}>기록 분포</button>
+        <label className="quality-toggle"><input type="checkbox" disabled={!data} checked={hideSuspects} onChange={event => changeQuality(() => setHideSuspects(event.target.checked))} />오류 의심 지점 숨기기</label>
+        <button disabled={!data} aria-haspopup="dialog" onClick={() => setPanel('quality')}>위치 검사{data ? ` · 숨김 ${projection.excluded.size}` : ''}</button>
         <MappingProgress groups={groups} session={landmarkSession} onShowPhoto={point => { setViewMode('mapped'); setCandidates(null); selectObservation(point); }} onStop={() => landmarkSession.stopMapping()} />
         <button aria-label="이용 안내" aria-haspopup="dialog" onClick={() => setPanel('info')}>ⓘ</button>
       </nav>
-      <div className="import-status" role="status" aria-live="polite">{busy ? '로컬에서 위치·시각을 검사하고 정렬하는 중입니다…' : !result ? 'JSON을 올려 발자취를 확인하세요.' : result.ok ? '관측 ' + result.counts.accepted.toLocaleString() + '개 · 연결 ' + connections.length.toLocaleString() + '개' + (groups.length ? ' · 장소별 지점 ' + groups.length.toLocaleString() + '개' : '') : '[' + result.code + '] ' + errors[result.code]}</div>
+      <div className="import-status" role="status" aria-live="polite">{busy ? '로컬에서 위치·시각을 검사하고 정렬하는 중입니다…' : !result ? 'JSON을 올려 발자취를 확인하세요.' : result.ok ? '관측 ' + result.counts.accepted.toLocaleString() + '개 · 연결 ' + projection.connections.length.toLocaleString() + '개 · 숨김 ' + projection.excluded.size.toLocaleString() + '개' + (groups.length ? ' · 장소별 지점 ' + groups.length.toLocaleString() + '개' : '') : '[' + result.code + '] ' + errors[result.code]}</div>
     </div>
     {viewMode === 'mapped' && <div className="summary-legend" role="status">장소 {placeSummary.nodes.length}곳 · 연결 {placeSummary.edges.length}개<span>같은 장소와 가까운 경유점을 모아 표시합니다.</span>{mappedSelection && <span>선택 기록의 앞뒤 연결 강조</span>}</div>}
     {viewMode === 'mapped' && stops.length > 0 && <LandmarkRail key={data?.datasetId} stops={stops} selectedId={selectedId} onSelect={point => { setCandidates(null); setPanel(null); selectObservation(point, 'rail'); }} />}
@@ -144,13 +161,15 @@ export function LocalPreview() {
         {viewMode === 'mapped' && groupsByRepresentative.has(selectedObservation.id) && <><p>관측 {groupsByRepresentative.get(selectedObservation.id)!.observationCount}개 · 첫 관측 {formatDiaryTime(groupsByRepresentative.get(selectedObservation.id)!.start, timezone)} · 마지막 관측 {formatDiaryTime(groupsByRepresentative.get(selectedObservation.id)!.end, timezone)}</p><LandmarkPanel group={groupsByRepresentative.get(selectedObservation.id)!} session={landmarkSession} /></>}
       </div>
     </Panel>}
-    {panel && <Panel title={{ points: '위치 기록', distribution: '기록 분포', mapping: '장소 매핑 안내', info: '이용 안내' }[panel]} onClose={() => setPanel(null)}>
-      {panel === 'points' && data && <ObservationList points={data.observations} selectedId={selectedId} timezone={timezone} onSelect={point => { setCandidates(null); selectObservation(point); setPanel(null); }} />}
-      {panel === 'mapping' && <MappingConsent session={landmarkSession} onAllow={() => { landmarkSession.allow(); setViewMode('raw'); setPanel(null); }} onDecline={() => { setViewMode('raw'); setPanel(null); }} />}
+    {panel && <Panel title={{ points: '위치 기록', distribution: '기록 분포', mapping: '장소 매핑 안내', quality: '위치 검사', info: '이용 안내' }[panel]} onClose={() => setPanel(null)}>
+      {panel === 'points' && data && <ObservationList points={data.observations} selectedId={selectedId} timezone={timezone} onSelect={point => { setViewMode('raw'); setCandidates(null); selectObservation(point); setPanel(null); }} quality={quality} excluded={projection.excluded} restored={restored} onRestore={restore} />}
+      {panel === 'quality' && data && <QualityControls points={data.observations} report={quality} projection={projection} restored={restored} timezone={timezone} onRestore={restore} onSelect={point => { setViewMode('raw'); setCandidates(null); selectObservation(point); setPanel(null); }} onRemap={() => setPanel('mapping')} />}
+      {panel === 'mapping' && <><p>원본 {data?.observations.length ?? 0}개 중 오류 의심 지점 {projection.excluded.size}개를 숨기고 {projection.points.length}개를 매핑합니다. 판정과 개별 복원은 ‘위치 검사’에서 확인할 수 있습니다.</p><MappingConsent session={landmarkSession} onAllow={() => { landmarkSession.allow(); setViewMode('raw'); setPanel(null); }} onDecline={() => { setViewMode('raw'); setPanel(null); }} /></>}
+      {panel === 'distribution' && <p>원본 전체의 인접 관측을 기준으로 계산합니다. 숨기기와 지도 연결 중단은 이 분포에 적용하지 않습니다.</p>}
       {panel === 'distribution' && <div className="distribution-options" role="group" aria-label="분류 기준"><button aria-pressed={distributionMode === 'time'} onClick={() => setDistributionMode('time')}>시간 간격</button><button aria-pressed={distributionMode === 'distance'} onClick={() => setDistributionMode('distance')}>이동 거리</button></div>}
       {panel === 'distribution' && distributionMode === 'time' && <Histogram title="시간차 분포" values={times} edges={timeEdges} labels={timeLabels} unit="분" />}
       {panel === 'distribution' && distributionMode === 'distance' && <><Histogram title="거리 분포" values={distances} edges={distanceEdges} labels={distanceLabels} unit="km" /><p>이웃 관측 사이의 지표면 최단 거리이며 실제 이동 거리나 도로 길이가 아닙니다.</p></>}
-      {panel === 'info' && <><p>JSON은 이 탭에서만 처리하며 전송·저장하지 않습니다. rawSignals 형식, 최대 64 MiB·100,000개 신호를 지원합니다.</p><p>MapTiler 지도 요청으로 IP 주소와 열람 지역·확대 수준이 서비스에 전달될 수 있습니다. JSON 본문·파일명·관측 시각은 전송하지 않습니다.</p><p>연결선은 기록 지점 사이의 흐름이며 실제 이동 경로가 아닙니다. 지우기·새로고침·탭 종료 시 기록은 유지되지 않습니다.</p>{result?.counts && <p>입력 신호 {result.counts.input.toLocaleString()}개 · 위치 외 신호 제외 {result.counts.ignoredSignals.toLocaleString()}개 · 잘못된 위치 제외 {result.counts.invalidPositions.toLocaleString()}개. 제외된 기록 앞뒤의 유효 위치가 연결됩니다.</p>}</>}
+      {panel === 'info' && <><p>JSON은 이 탭에서만 처리하며 전송·저장하지 않습니다. rawSignals 형식, 최대 64 MiB·100,000개 신호를 지원합니다.</p><p>MapTiler 지도 요청으로 IP 주소와 열람 지역·확대 수준이 서비스에 전달될 수 있습니다. JSON 본문·파일명·관측 시각은 전송하지 않습니다.</p><p>연결선은 기록 지점 사이의 흐름이며 실제 이동 경로가 아닙니다. 지우기·새로고침·탭 종료 시 기록은 유지되지 않습니다.</p>{result?.counts && <p>입력 신호 {result.counts.input.toLocaleString()}개 · 위치 외 신호 제외 {result.counts.ignoredSignals.toLocaleString()}개 · 잘못된 위치 제외 {result.counts.invalidPositions.toLocaleString()}개. 파서에서 유효하지 않은 입력은 관측으로 채택하지 않습니다. 위치 검사는 채택된 원본 관측을 보존하며, 숨긴 지점의 앞뒤·30분 초과 공백·동일 시각 위치 충돌은 연결하지 않습니다.</p>}</>}
       {panel === 'info' && <><p>기록 주변 300m를 덮는 구역의 장소를 먼저 조회하고 원본 포인트와 대조합니다. 같은 장소에 연결된 연속 기록에서 장소와 가장 가까운 관측을 대표점으로 정하고, 그 주변 100m 이내를 묶습니다. 다른 장소로 이동하거나 인접 공백이 120분을 넘으면 분리합니다. 원본 목록·분포는 유지하며 관측 시간 범위는 확정 체류 시간이 아닙니다.</p><p>파일별 동의 후 검색 구역 경계를 일본어·영어 Wikipedia로 보내고 같은 Wikidata ID는 합칩니다. 도시·행정구역·사건으로 분류된 문서는 제외하지만, 일반 시설도 후보에 포함될 수 있습니다. 지역 검색은 모든 장소의 완전한 수집을 보장하지 않으며 실패한 지역은 후보 없음과 구분합니다. 원본 포인트 대조와 묶기 후 연결된 장소의 사진을 조회합니다. 가장 가까운 후보를 추정 표시하며 실제 방문을 확정하지 않습니다. 동시 최대 3건·모든 메타데이터 요청 400ms 이상 간격·파일당 횟수 제한 없음·요청당 10초 제한이며 자동 재시도하지 않습니다. 사용량 제한·인증 오류 때 자동 조회를 중지합니다. 사진은 해당 Wikidata 항목의 P18과 해당 Wikipedia 문서의 자유 이용 대표 이미지만 확인합니다. Commons에 파일명, Wikidata에 항목 ID를 전달하며 원본 시각·파일명·기록 ID는 보내지 않습니다. 사진 출처와 이용 조건을 표시합니다. 문서에 좌표·사진이 없으면 찾지 못합니다. 사진 조회 상태는 상단 원형 진행 표시에서 확인할 수 있습니다. 추가 조회 중단은 진행 중인 요청을 취소하고 이미 조회한 결과를 유지합니다. 기록과 조회 결과의 삭제는 JSON 올리기 옆 지우기를 사용합니다.</p></>}
 
     </Panel>}

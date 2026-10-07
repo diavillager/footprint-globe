@@ -41,7 +41,7 @@ export function groupObservations(datasetId: DatasetId, observations: readonly O
 export interface LandmarkGroup extends ObservationGroup { readonly landmarkId: string | null }
 /** Same-place consecutive episodes first; each spatial subset is anchored by its closest observation. */
 export function groupByLandmark(datasetId: DatasetId, observations: readonly Observation[],
-  matches: ReadonlyMap<ObservationId, readonly LandmarkCandidate[]>): LandmarkGroup[] {
+  matches: ReadonlyMap<ObservationId, readonly LandmarkCandidate[]>, breakBefore: ReadonlySet<ObservationId> = new Set()): LandmarkGroup[] {
   const output: {start:number; group:LandmarkGroup}[] = [];
   const append = (from: number, to: number, anchor: number, landmarkId: string | null) => {
     const members = observations.slice(from, to + 1), ids = members.map(point => point.id);
@@ -54,7 +54,7 @@ export function groupByLandmark(datasetId: DatasetId, observations: readonly Obs
     const id = matches.get(observations[start]!.id)?.[0]?.providerPlaceId ?? null;
     if (!id) { append(start, start, start, null); start++; continue; }
     let end = start + 1;
-    while (end < observations.length && matches.get(observations[end]!.id)?.[0]?.providerPlaceId === id
+    while (end < observations.length && !breakBefore.has(observations[end]!.id) && matches.get(observations[end]!.id)?.[0]?.providerPlaceId === id
       && observations[end]!.time.epochMs - observations[end - 1]!.time.epochMs <= GROUP_POLICY.maxGapMs) end++;
     const assigned = new Set<number>();
     const anchors = Array.from({length:end - start}, (_, i) => start + i).sort((a,b) =>

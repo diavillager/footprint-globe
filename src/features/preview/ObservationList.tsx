@@ -1,9 +1,16 @@
+import type { QualityReport } from './locationQuality';
+import { QualityEvidence } from './QualityEvidence';
 import { useEffect, useState } from 'react';
 import type { Observation, ObservationId } from '../../domain/timeline';
 import { formatObservationTime, type DisplayTimezone } from './observationTime';
 
 const PAGE_SIZE = 20;
-export function ObservationList({ points, selectedId, onSelect, timezone }: {
+export function ObservationList({ points, selectedId, onSelect, timezone, quality, excluded, restored, onRestore, filter }: {
+  quality?: QualityReport;
+  excluded?: ReadonlySet<ObservationId>;
+  restored?: ReadonlySet<ObservationId>;
+  onRestore?: (id: ObservationId) => void;
+  filter?: (point: Observation) => boolean;
   points: readonly Observation[];
   selectedId: ObservationId | null;
   onSelect: (point: Observation) => void;
@@ -11,7 +18,7 @@ export function ObservationList({ points, selectedId, onSelect, timezone }: {
 }) {
   const [page, setPage] = useState(0);
   const selected = points.find(point => point.id === selectedId);
-  const visible = points;
+  const visible = filter ? points.filter(filter) : points;
   useEffect(() => setPage(0), [points]);
   const lastPage = Math.max(0, Math.ceil(visible.length / PAGE_SIZE) - 1);
   const currentPage = Math.min(page, lastPage);
@@ -25,6 +32,7 @@ export function ObservationList({ points, selectedId, onSelect, timezone }: {
         <button aria-pressed={point.id === selectedId} onClick={() => onSelect(point)}>
           관측 {points.indexOf(point) + 1} · {formatObservationTime(point.time, timezone)}
         </button>
+        {quality && excluded && restored && onRestore && <QualityEvidence point={point} report={quality} excluded={excluded} restored={restored} onRestore={onRestore} />}
       </li>)}
     </ol>
     <div className="globe-tools">

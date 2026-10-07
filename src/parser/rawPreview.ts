@@ -32,7 +32,7 @@ function coordinate(value: unknown) {
   return Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 ? { latitude, longitude } : null;
 }
 
-/** Preview extractor, not the sample sanitizer. Copies only validated coordinates and timestamps. */
+/** Preview extractor, not the sample sanitizer. Copies validated coordinates, timestamps and optional reported accuracy. */
 export function parseRawPreview(text: string, datasetId: DatasetId): ParseResult {
   if (new TextEncoder().encode(text).length > PREVIEW_LIMITS.bytes) return { ok: false, code: 'INPUT_LIMIT' };
   let root: unknown;
@@ -48,7 +48,8 @@ export function parseRawPreview(text: string, datasetId: DatasetId): ParseResult
     const coord = coordinate(own(position, 'LatLng') ? position.LatLng : position.latLng);
     const time = timestamp(position.timestamp);
     if (!coord || !time) { counts.invalidPositions++; continue; }
-    entries.push({ ns: time.ns, point: { id: `observation:${datasetId}:${entries.length}`, coordinate: coord, time: time.instant } });
+    entries.push({ ns: time.ns, point: { id: `observation:${datasetId}:${entries.length}`, coordinate: coord, time: time.instant,
+      ...(typeof position.accuracyMeters === 'number' && Number.isFinite(position.accuracyMeters) && position.accuracyMeters >= 0 ? { accuracyMeters: position.accuracyMeters } : {}) } });
   }
   // Exact fractional timestamps order observations; equal instants keep source order.
   entries.sort((a, b) => a.ns < b.ns ? -1 : a.ns > b.ns ? 1 : 0);

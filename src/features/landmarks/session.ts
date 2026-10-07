@@ -42,7 +42,9 @@ export class LandmarkSession {
   matchedPoints = 0;
   pointCounts = {success:0, empty:0, error:0};
   regionRequests = 0;
-  prepareRegions(datasetId: DatasetId, observations: readonly Observation[]) {
+  private breakBefore: ReadonlySet<ObservationId> = new Set();
+  prepareRegions(datasetId: DatasetId, observations: readonly Observation[], breakBefore: ReadonlySet<ObservationId> = new Set()) {
+    this.breakBefore = breakBefore;
     this.datasetId = datasetId; this.observations = observations; this.regionPlan = new RegionPlan(observations);
     this.emit();
   }
@@ -81,7 +83,7 @@ export class LandmarkSession {
       else counts.empty++;
     }
     if (generation !== this.generation || this.stopped || !this.consent) return;
-    this.groups = groupByLandmark(this.datasetId, this.observations, matches);
+    this.groups = groupByLandmark(this.datasetId, this.observations, matches, this.breakBefore);
     for (const group of this.groups) {
       const id = group.representative.id, code = errors.get(id), candidates = matches.get(id) ?? [];
       this.states.set(group.groupId, code ? {status:'error', code}
