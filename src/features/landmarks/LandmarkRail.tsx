@@ -4,7 +4,15 @@ import type { ObservationGroup } from './groups';
 import type { LandmarkCandidate } from './geoapify';
 
 export function mappedStops(groups: readonly ObservationGroup[], candidate: (group: ObservationGroup) => LandmarkCandidate | null) {
-  return groups.flatMap(group => { const place = candidate(group); return place ? [{group,place}] : []; });
+  const places = new Map<string, {group: ObservationGroup; place: LandmarkCandidate; groups: ObservationGroup[]}>();
+  for (const group of groups) {
+    const place = candidate(group);
+    if (!place) continue;
+    const stop = places.get(place.providerPlaceId);
+    if (stop) stop.groups.push(group);
+    else places.set(place.providerPlaceId, {group,place,groups:[group]});
+  }
+  return [...places.values()];
 }
 export type LandmarkStop = ReturnType<typeof mappedStops>[number];
 
@@ -14,7 +22,7 @@ export function LandmarkRail({ stops, selectedId, onSelect }: {
   const scroll = useRef<HTMLDivElement>(null);
   const drag = useRef<{id: number; x: number; left: number; moved: boolean} | null>(null);
   const suppressClick = useRef(false);
-  const selected = stops.findIndex(stop => stop.group.representative.id === selectedId);
+  const selected = stops.findIndex(stop => stop.groups.some(group => group.representative.id === selectedId));
   useLayoutEffect(() => { if (scroll.current) scroll.current.scrollLeft = 0; }, []);
   useEffect(() => {
     const node = scroll.current;if (!node) return;
@@ -61,7 +69,7 @@ export function LandmarkRail({ stops, selectedId, onSelect }: {
       onPointerCancel={event => { drag.current = null; delete event.currentTarget.dataset.dragging; }}
       onLostPointerCapture={event => { if (event.target === event.currentTarget) { drag.current = null; delete event.currentTarget.dataset.dragging; } }}
       onClickCapture={event => { if (suppressClick.current && event.detail !== 0) { event.preventDefault(); event.stopPropagation(); } }}>
-      <ol>{stops.map(({group,place},index)=><li key={group.groupId}><button data-place-id={group.representative.id} aria-label={`${index+1}. ${place.name}`} aria-pressed={selectedId===group.representative.id} title={`${index+1}. ${place.name}`} onClick={()=>onSelect(group.representative)}>{index+1}</button></li>)}</ol>
+      <ol>{stops.map(({group,place},index)=><li key={place.providerPlaceId}><button data-place-id={group.representative.id} aria-label={`${index+1}. ${place.name}`} aria-pressed={selected===index} title={`${index+1}. ${place.name}`} onClick={()=>onSelect(group.representative)}>{index+1}</button></li>)}</ol>
     </div>
   </nav>;
 }

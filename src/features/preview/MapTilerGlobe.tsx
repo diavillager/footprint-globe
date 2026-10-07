@@ -27,9 +27,9 @@ sdk.setWorkerUrl(workerUrl);
 
 export default function MapTilerGlobe(props: Props) {
   const landmarkRevision = useSyncExternalStore(props.landmarkSession.subscribe, props.landmarkSession.snapshot);
-  const markerEntries = useMemo(() => props.summary ? props.summary.nodes.map(node => {
+  const markerEntries = useMemo(() => props.summary ? props.summary.nodes.map((node, index) => {
     const group = node.groups.find(group => group.representative.id === props.selectedObservation?.id) ?? node.groups[0]!;
-    return {group, index:props.groups.indexOf(group), point:node.point, count:node.groups.length};
+    return {group, index, point:node.point, count:node.groups.length};
   }) : [], [props.summary,props.groups,props.selectedObservation]);
   const [visibleIndices, setVisibleIndices] = useState<number[]>([]);
   const diaryHosts = useMemo(() => visibleIndices.flatMap(index => {
