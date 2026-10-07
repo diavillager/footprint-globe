@@ -1,3 +1,4 @@
+import { LandmarkPhoto } from './LandmarkPhoto';
 import { useSyncExternalStore } from 'react';
 import type { ObservationGroup } from './groups';
 import { LandmarkSession } from './session';
@@ -16,8 +17,9 @@ export function LandmarkPanel({ group, session }: { group: ObservationGroup; ses
   const unavailable = session.unavailable;
   const imageStatus = state.status === 'success' && state.candidates[0] ? session.imageStatus(state.candidates[0].providerPlaceId) : undefined;
   return <div className="landmark-panel" aria-label="주변 랜드마크">
+    {state.status === 'success' && state.candidates[0] && <LandmarkPhoto id={state.candidates[0].providerPlaceId} session={session} eager />}
     <h4>주변 랜드마크 후보</h4>
-    {imageStatus && <p>대표 사진: {{ loading: '조회 중', ready: '표시 대기', loaded: '표시 확인', missing: '사진 정보 없음', unsupported: '지원하지 않는 참조·주소', error: '조회 실패 또는 시간 초과', 'load-error': '이미지 로딩 실패', cancelled: '조회 취소' }[imageStatus]}</p>}
+    {imageStatus && <p>대표 사진: {{ loading: '조회 중', ready: '표시 대기', loaded: '불러오기 성공', missing: '사진 정보 없음', unsupported: '지원하지 않는 참조·주소', error: '조회 실패 또는 시간 초과', 'load-error': '이미지 로딩 실패', cancelled: '조회 취소' }[imageStatus]}</p>}
     <p>현재 관광 명소·볼거리·박물관 정보를 300m 안에서 최대 10개 찾습니다. 가까운 순서이며 방문 여부·당시 존재 여부를 뜻하지 않습니다. 기념비·예술품·계절 행사가 포함될 수 있습니다.</p>
     {!session.consent ? <p>상단 장소 매핑에서 동의하면 장소를 자동으로 표시합니다.</p> : <>
       {state.status === 'loading' && <p role="status">주변 장소를 자동 조회하는 중입니다…</p>}

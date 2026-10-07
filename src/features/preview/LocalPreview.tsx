@@ -108,7 +108,7 @@ export function LocalPreview() {
     </div>
     {panel && <Panel title={{ points: '위치 기록', distribution: '기록 분포', mapping: '장소 매핑', info: '이용 안내' }[panel]} onClose={() => setPanel(null)}>
       {panel === 'points' && data && <ObservationList points={data.observations} selectedId={selectedId} timezone={timezone} onSelect={point => { setCandidates(null); selectObservation(point); setPanel(null); }} />}
-      {panel === 'mapping' && <PlaceMappingPanel groups={groups} session={landmarkSession} />}
+      {panel === 'mapping' && <PlaceMappingPanel groups={groups} session={landmarkSession} selectedId={selectedId} onShowPhoto={point => { setCandidates(null); selectObservation(point); setPanel(null); }} />}
       {panel === 'distribution' && <div className="distribution-options" role="group" aria-label="분류 기준"><button aria-pressed={distributionMode === 'time'} onClick={() => setDistributionMode('time')}>시간 간격</button><button aria-pressed={distributionMode === 'distance'} onClick={() => setDistributionMode('distance')}>이동 거리</button></div>}
       {panel === 'distribution' && distributionMode === 'time' && <Histogram title="시간차 분포" values={times} edges={timeEdges} labels={timeLabels} unit="분" />}
       {panel === 'distribution' && distributionMode === 'distance' && <><Histogram title="거리 분포" values={distances} edges={distanceEdges} labels={distanceLabels} unit="km" /><p>이웃 관측 사이의 지표면 최단 거리이며 실제 이동 거리나 도로 길이가 아닙니다.</p></>}

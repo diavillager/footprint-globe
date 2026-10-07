@@ -149,7 +149,11 @@ export default function MapTilerGlobe(props: Props) {
         if (point.x < 0 || point.x > width || point.y < 0 || point.y > height) return;
         const cell = `${Math.floor(point.x / 195)}:${Math.floor(point.y / 145)}`;
         const previous = cells.get(cell);
-        if (previous === undefined || (props.landmarkSession.state(props.groups[previous]!.groupId).status !== 'success' && props.landmarkSession.state(group.groupId).status === 'success')) cells.set(cell, index);
+        const hasPhoto = (i: number) => {
+          const candidate = diaryCandidate(props.landmarkSession, props.groups[i]!);
+          return candidate && props.landmarkSession.image(candidate.providerPlaceId) ? 1 : 0;
+        };
+        if (previous === undefined || hasPhoto(index) > hasPhoto(previous)) cells.set(cell, index);
       });
       const indices = [...cells.values()].sort((a, b) => a - b);
       setVisibleIndices(previous => previous.length === indices.length && previous.every((value, i) => value === indices[i]) ? previous : indices);
@@ -168,7 +172,14 @@ export default function MapTilerGlobe(props: Props) {
     const layout = () => {
       const used: DOMRect[] = [];
       const controls = document.querySelector('.top-controls')?.getBoundingClientRect();
-      for (const { host } of diaryHosts) {
+      const ordered = [...diaryHosts].sort((a, b) => {
+        const hasPhoto = (group: ObservationGroup) => {
+          const candidate = diaryCandidate(latest.current.landmarkSession, group);
+          return candidate && latest.current.landmarkSession.image(candidate.providerPlaceId) ? 1 : 0;
+        };
+        return hasPhoto(b.group) - hasPhoto(a.group);
+      });
+      for (const { host } of ordered) {
         const rect = host.getBoundingClientRect();
         const overlap = (other: DOMRect) => rect.left < other.right + 8 && rect.right + 8 > other.left && rect.top < other.bottom + 8 && rect.bottom + 8 > other.top;
         const hidden = (controls && overlap(controls)) || used.some(overlap);
