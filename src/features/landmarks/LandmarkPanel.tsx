@@ -41,6 +41,6 @@ export function LandmarkPanel({ group, session }: { group: ObservationGroup; ses
     {state.status === 'empty' && <p role="status">주변 장소를 찾지 못했습니다.</p>}
     {state.status === 'cancelled' && <p role="status">조회가 취소되었습니다.</p>}
     {(state.status === 'error' || (!cached && unavailable)) && <p role="alert">[{state.status === 'error' ? state.code : unavailable}] {messages[state.status === 'error' ? state.code : unavailable!]}</p>}
-    <p className="landmark-attribution">Powered by <a href="https://www.geoapify.com/" target="_blank" rel="noreferrer">Geoapify</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a></p>
+    <p className="landmark-attribution">{session.provider === 'wikimedia' ? <>Wikipedia · Wikidata · Wikimedia Commons{candidate?.sourceUrl && <> · <a href={candidate.sourceUrl} target="_blank" rel="noreferrer">장소 원문 확인</a></>}</> : <>Powered by <a href="https://www.geoapify.com/" target="_blank" rel="noreferrer">Geoapify</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a></>}</p>
   </div>;
 }

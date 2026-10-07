@@ -78,8 +78,8 @@ export class RegionPlan {
     const bucket = this.buckets.get(task.root) ?? new Map<string, LandmarkPlace>();
     this.buckets.set(task.root, bucket);
     for (const place of page.places) { bucket.set(place.providerPlaceId, place); this.places.set(place.providerPlaceId, place); }
-    if (page.rawCount === REGION_PAGE_SIZE) {
-      if (task.offset === 0) this.enqueue(task.root, task.bounds, REGION_PAGE_SIZE, task.depth);
+    if (page.subdivide || page.rawCount === REGION_PAGE_SIZE) {
+      if (!page.subdivide && task.offset === 0) this.enqueue(task.root, task.bounds, REGION_PAGE_SIZE, task.depth);
       else if (task.depth < 3) {
         const {west,south,east,north} = task.bounds, midX = (west + east) / 2, midY = (south + north) / 2;
         for (const [w,e] of [[west,midX],[midX,east]]) for (const [s,n] of [[south,midY],[midY,north]]) this.enqueue(task.root, {west:w!,east:e!,south:s!,north:n!}, 0, task.depth + 1);

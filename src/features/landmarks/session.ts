@@ -1,5 +1,5 @@
 import type { Coordinate, DatasetId, Observation, ObservationId } from '../../domain/timeline';
-import { fetchCandidates, fetchRegion, fetchImage, ImageFailure, type LandmarkImage, LandmarkFailure, type LandmarkCandidate, type LandmarkError } from './geoapify';
+import { fetchCandidates, fetchRegion, fetchImage, ImageFailure, type LandmarkImage, LandmarkFailure, type LandmarkCandidate, type LandmarkError, type RegionBounds, type RegionPage } from './geoapify';
 import { groupByLandmark, type LandmarkGroup, type ObservationGroup } from './groups';
 import { RegionPlan } from './regions';
 
@@ -10,6 +10,7 @@ export type QueryState =
   | { status: 'error'; code: LandmarkError };
 export type ImageStatus = 'loading' | 'ready' | 'loaded' | 'missing' | 'unsupported' | 'error' | 'load-error' | 'cancelled';
 const idle: QueryState = { status: 'idle' };
+type RegionLookup = (bounds: RegionBounds, offset: number, key: string, signal: AbortSignal, additional?: () => void) => Promise<RegionPage>;
 type Lookup = (coordinate: Coordinate, key: string, signal: AbortSignal) => Promise<LandmarkCandidate[]>;
 
 /** One instance per loaded dataset. Automatic diary requests start only after file-level consent. */
@@ -30,7 +31,9 @@ export class LandmarkSession {
   consent = false;
   stopped = false;
   attempts = 0;
-  constructor(readonly key: string, private lookup: Lookup = fetchCandidates, private imageLookup = fetchImage, private regionLookup = fetchRegion) {}
+  constructor(readonly key: string, private lookup: Lookup = fetchCandidates, private imageLookup = fetchImage, private regionLookup: RegionLookup = (b,o,k,s)=>fetchRegion(b,o,k,s), private source?: {clear:()=>void; actualRequests:boolean}) {}
+  get provider() { return this.source ? 'wikimedia' : 'geoapify'; }
+  noteRequest(kind: 'region' | 'photo') { this.attempts++; if(kind === 'region') this.regionRequests++; else this.mediaRequests++; this.emit(); }
   private regionPlan: RegionPlan | null = null;
   private datasetId: DatasetId = 'dataset:empty';
   private observations: readonly Observation[] = [];
@@ -50,7 +53,7 @@ export class LandmarkSession {
     const task = this.regionPlan.next();
     if (!task) return;
     const plan = this.regionPlan;
-    this.regionRequests++;
+    if (!this.source?.actualRequests) this.regionRequests++;
     await this.run(task.id, false, async (signal, valid) => {
       const page = await this.regionLookup(task.bounds, task.offset, this.key, signal);
       if (valid()) plan.accept(task, page);
@@ -129,7 +132,7 @@ export class LandmarkSession {
   }
   get busy() { return this.active.size > 0; }
   get capacity() { return this.active.size < 3; }
-  get unavailable(): LandmarkError | null { return !this.key.trim() ? 'CONFIGURATION' : this.blocked; }
+  get unavailable(): LandmarkError | null { return !this.source && !this.key.trim() ? 'CONFIGURATION' : this.blocked; }
   allow() { this.consent = true; this.emit(); }
   select(groupId: string, candidateId: string | null) {
     const state = this.state(groupId);
@@ -149,7 +152,7 @@ export class LandmarkSession {
     this.active.clear(); this.emit();
   }
   revoke() {
-    this.cancel(); this.consent = false; this.states.clear(); this.selections.clear(); this.images.clear();
+    this.cancel(); this.source?.clear(); this.consent = false; this.states.clear(); this.selections.clear(); this.images.clear();
     this.imageAttempts.clear(); this.imageStates.clear(); this.coordinateGroups.clear(); this.coordinateStates.clear(); this.regionPlan = null; this.observations = []; this.groups = []; this.phase = 'regions'; this.matchedPoints = 0; this.pointCounts = {success:0,empty:0,error:0}; this.regionRequests = 0; this.emit();
   }
   dispose() { this.revoke(); this.attempts = 0; this.mediaRequests = 0; this.blocked = null; this.stopped = false; }
@@ -171,7 +174,7 @@ export class LandmarkSession {
     const timer = setTimeout(() => {
       fail(new LandmarkFailure('TIMEOUT')); controller.abort(); this.active.delete(token); this.emit();
     }, REQUEST_TIMEOUT_MS);
-    this.active.set(token, { id, media, controller, timer, ...(onCancel ? {onCancel} : {}) }); this.attempts++; this.emit();
+    this.active.set(token, { id, media, controller, timer, ...(onCancel ? {onCancel} : {}) }); if (!this.source?.actualRequests) this.attempts++; this.emit();
     try { await work(controller.signal, valid); } catch (error) { fail(error); }
     finally { clearTimeout(timer); if (valid()) { this.active.delete(token); this.emit(); } }
   }
@@ -180,7 +183,7 @@ export class LandmarkSession {
     this.imageAttempts.add(id); this.imageStates.set(id, 'loading');
     await this.run(id, true, async (signal, valid) => {
       const image = await this.imageLookup(id, this.key, signal, fetch, () => {
-        if (valid()) { this.attempts++; this.mediaRequests++; this.emit(); }
+        if (valid() && !this.source?.actualRequests) { this.attempts++; this.mediaRequests++; this.emit(); }
       });
       if (valid()) { this.images.set(id, image); this.imageStates.set(id, image ? 'ready' : 'missing'); }
     });

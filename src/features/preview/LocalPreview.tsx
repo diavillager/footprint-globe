@@ -5,11 +5,10 @@ import type { ImportRequest } from './importFile';
 import { connectAll, distribution } from './analysis';
 import { ObservationList } from './ObservationList';
 import type { DisplayTimezone } from './observationTime';
-import { LandmarkSession } from '../landmarks/session';
+import { createWikimediaSession } from '../landmarks/createSession';
 import { diaryCandidate, MappingConsent, MappingProgress, usePlaceMapping } from '../landmarks/TravelDiary';
 import { LandmarkPanel } from '../landmarks/LandmarkPanel';
 import { formatDiaryTime } from './observationTime';
-import { geoapifyKey } from '../../map-config';
 const empty = [] as const;
 const MapTilerGlobe = lazy(() => import('./MapTilerGlobe'));
 
@@ -61,7 +60,7 @@ export function LocalPreview() {
   const stop = () => { worker.current?.terminate(); worker.current = null; setBusy(false); };
   useEffect(() => () => worker.current?.terminate(), []);
   const data = result?.ok ? result.data : null;
-  const landmarkSession = useMemo(() => new LandmarkSession(geoapifyKey), [data]);
+  const landmarkSession = useMemo(() => createWikimediaSession(), [data]);
   useEffect(() => {
     if (data) landmarkSession.prepareRegions(data.datasetId, data.observations);
     return () => landmarkSession.dispose();
@@ -133,7 +132,7 @@ export function LocalPreview() {
       {panel === 'distribution' && distributionMode === 'time' && <Histogram title="시간차 분포" values={times} edges={timeEdges} labels={timeLabels} unit="분" />}
       {panel === 'distribution' && distributionMode === 'distance' && <><Histogram title="거리 분포" values={distances} edges={distanceEdges} labels={distanceLabels} unit="km" /><p>이웃 관측 사이의 지표면 최단 거리이며 실제 이동 거리나 도로 길이가 아닙니다.</p></>}
       {panel === 'info' && <><p>JSON은 이 탭에서만 처리하며 전송·저장하지 않습니다. rawSignals 형식, 최대 64 MiB·100,000개 신호를 지원합니다.</p><p>MapTiler 지도 요청으로 IP 주소와 열람 지역·확대 수준이 서비스에 전달될 수 있습니다. JSON 본문·파일명·관측 시각은 전송하지 않습니다.</p><p>연결선은 기록 지점 사이의 흐름이며 실제 이동 경로가 아닙니다. 지우기·새로고침·탭 종료 시 기록은 유지되지 않습니다.</p>{result?.counts && <p>입력 신호 {result.counts.input.toLocaleString()}개 · 위치 외 신호 제외 {result.counts.ignoredSignals.toLocaleString()}개 · 잘못된 위치 제외 {result.counts.invalidPositions.toLocaleString()}개. 제외된 기록 앞뒤의 유효 위치가 연결됩니다.</p>}</>}
-      {panel === 'info' && <><p>기록 주변 300m를 덮는 구역의 장소를 먼저 조회하고 원본 포인트와 대조합니다. 같은 장소에 연결된 연속 기록에서 장소와 가장 가까운 관측을 대표점으로 정하고, 그 주변 100m 이내를 묶습니다. 다른 장소로 이동하거나 인접 공백이 120분을 넘으면 분리합니다. 원본 목록·분포는 유지하며 관측 시간 범위는 확정 체류 시간이 아닙니다.</p><p>파일별 동의 후 검색 구역의 경계 좌표를 Geoapify로 보내고, 중복 장소는 재사용합니다. 지역 검색은 모든 장소의 완전한 수집을 보장하지 않으며 실패한 지역은 후보 없음과 구분합니다. 원본 포인트 대조와 묶기 후 연결된 장소의 사진을 조회합니다. 가장 가까운 후보를 추정 표시하며 실제 방문을 확정하지 않습니다. 동시 최대 3건·250ms 간격·파일당 횟수 제한 없음·요청당 10초 제한이며 자동 재시도하지 않습니다. 사용량 제한·인증 오류 때 자동 조회를 중지합니다. 사진은 Geoapify의 이미지·Commons 파일 참조 또는 Wikidata 대표 사진을 통해 찾습니다. Wikimedia에는 파일명이나 장소 ID만 전달하고 관측 좌표·시각은 보내지 않습니다. 사진 조회 상태는 상단 원형 진행 표시에서 확인할 수 있습니다. 추가 조회 중단은 진행 중인 요청을 취소하고 이미 조회한 결과를 유지합니다. 기록과 조회 결과의 삭제는 JSON 올리기 옆 지우기를 사용합니다.</p></>}
+      {panel === 'info' && <><p>기록 주변 300m를 덮는 구역의 장소를 먼저 조회하고 원본 포인트와 대조합니다. 같은 장소에 연결된 연속 기록에서 장소와 가장 가까운 관측을 대표점으로 정하고, 그 주변 100m 이내를 묶습니다. 다른 장소로 이동하거나 인접 공백이 120분을 넘으면 분리합니다. 원본 목록·분포는 유지하며 관측 시간 범위는 확정 체류 시간이 아닙니다.</p><p>파일별 동의 후 검색 구역 경계를 일본어·영어 Wikipedia로 보내고 같은 Wikidata ID는 합칩니다. 도시·행정구역·사건으로 분류된 문서는 제외하지만, 일반 시설도 후보에 포함될 수 있습니다. 지역 검색은 모든 장소의 완전한 수집을 보장하지 않으며 실패한 지역은 후보 없음과 구분합니다. 원본 포인트 대조와 묶기 후 연결된 장소의 사진을 조회합니다. 가장 가까운 후보를 추정 표시하며 실제 방문을 확정하지 않습니다. 동시 최대 3건·모든 메타데이터 요청 400ms 이상 간격·파일당 횟수 제한 없음·요청당 10초 제한이며 자동 재시도하지 않습니다. 사용량 제한·인증 오류 때 자동 조회를 중지합니다. 사진은 해당 Wikidata 항목의 P18과 해당 Wikipedia 문서의 자유 이용 대표 이미지만 확인합니다. Commons에 파일명, Wikidata에 항목 ID를 전달하며 원본 시각·파일명·기록 ID는 보내지 않습니다. 사진 출처와 이용 조건을 표시합니다. 문서에 좌표·사진이 없으면 찾지 못합니다. 사진 조회 상태는 상단 원형 진행 표시에서 확인할 수 있습니다. 추가 조회 중단은 진행 중인 요청을 취소하고 이미 조회한 결과를 유지합니다. 기록과 조회 결과의 삭제는 JSON 올리기 옆 지우기를 사용합니다.</p></>}
 
     </Panel>}
   </main>;

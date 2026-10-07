@@ -1,5 +1,6 @@
 // Geoapify category hierarchy: https://apidocs.geoapify.com/docs/places/#categories
 const labels: Record<string, string> = {
+  'wiki.place':'위키백과 장소', 'wiki.landmark':'명소·시설', 'wiki.mountain':'산', 'wiki.waterbody':'호수·수역', 'wiki.island':'섬', 'wiki.station':'철도역', 'wiki.airport':'공항', 'wiki.education':'교육 시설',
   tourism: '관광 장소', 'tourism.attraction': '관광 명소', 'tourism.sights': '볼거리',
   'tourism.attraction.artwork': '공공 미술', 'tourism.attraction.artwork.mural': '벽화',
   'tourism.attraction.artwork.sculpture': '조각 작품', 'tourism.attraction.artwork.statue': '동상',

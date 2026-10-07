@@ -1,6 +1,8 @@
-# Geoapify 랜드마크 연동
+# 랜드마크 소스 연동과 검증
 
 작성: 2026-10-07 (한국 시간)
+
+> 최신 사용자 승인: Geoapify 대신 Wikipedia·Wikidata·Commons로 시험한다. 현재 개발 앱은 Wikimedia만 호출한다. 아래 기존 Geoapify 계약·검증은 이력이며 문서 끝의 Wikimedia 시험 절이 공급자 관련 현행 기준이다.
 상태: `codex/landmark-footprints`에서 앱 통합 구현 중. 2026-10-07 사용자가 아래 자동 여행일지 흐름을 요청하고 파일당 횟수 제한 해제를 확정했다. 현재 프로덕션에 제공되는 기능이라는 뜻은 아니다.
 
 ## 2026-10-07 자동 여행일지로 변경 확정
@@ -260,3 +262,26 @@ MapTiler는 식당·상점·병원·편의점·역과 의미 없는 이름도 �
 
 
 지역 선조회 변경 검증: 타입 검사·빌드와 자동 테스트 184개(기존 샘플 66개, 앱 118개)를 통과했다. 개발/프로덕션 Edge 합성 smoke에서 네 여행, 동의 전 요청 없음, 지역 재사용, 원본 기본 선택·완료 전 전환 차단, 카메라 유지, 사진 목록·상세, 실패·중단·파일 교체, 모바일 배치와 기본 지도 10,123개 관측 회귀를 확인했다. 실제 Geoapify 지역 응답을 통한 정확도·누락률·속도는 아직 측정하지 않았으며 사용자 로컬 확인이 남아 있다. 기존 MapLibre 대형 번들 경고는 유지된다.
+
+
+## Wikipedia·Wikidata·Commons 시험 (2026-10-07)
+
+- 사용자 요청에 따라 현재 브랜치의 장소 소스를 교체해 검증한다. 현재 UI에서 Geoapify 요청 또는 fallback을 하지 않으며 CSP에서도 Geoapify를 제거한다. 이전 어댑터·테스트는 비교 이력으로 유지한다. API 키 없이 이용하고 MapTiler 지도는 유지한다. 배포·병합 승인을 뜻하지 않는다.
+- 파일별 동의 화면에서 새 요청 대상을 안내한다. Wikipedia의 일본어·영어 사이트에 구역 경계만, Wikidata에 Q ID, Commons에 파일명만 전송한다. 원본 JSON·시각·파일명·기록 ID는 전송하지 않으며 credentials omit·no-referrer·redirect error를 적용한다.
+- `generator=geosearch`와 bbox로 언어별 최대 500개 문서의 primary 좌표·좌표 유형·Wikidata ID·자유 이용 대표 이미지 파일명을 받는다. `colimit/pilimit=max`로 속성 수 제한을 완화하고 속성 continuation을 문서 ID별 병합한다. 반복·16페이지 초과 continuation은 SEARCH_INCOMPLETE다. 500개 포화는 구역 4분할(최대 3단계)로 처리하며 임의 offset을 사용하지 않는다.
+- 동일 Wikidata ID는 하나로 합치고 일본어 이름·좌표를 우선한다. Q ID가 없으면 언어와 문서 ID로 식별한다. 좌표가 범위 밖이거나 city/country/state/adm1st/adm2nd/event 유형이면 제외한다. 지리 좌표가 있는 일반 시설은 포함될 수 있으며 기존 관광 범주와 동등한 검색이라고 주장하지 않는다. 언어별 좌표 문서의 누락과 사진 없음도 정상적으로 발생할 수 있다.
+- 300m 내 최근접 후보 최대 10개와 장소 중심 100m·120분 묶기, 원본 경로 기본 표시·완료 후 수동 전환은 유지한다. 후보 분류는 Wikipedia 좌표 유형에 따른 제한된 한국어 분류이며 unknown은 ‘위키백과 장소’다. 상세에서 선택한 장소 원문 링크를 제공한다.
+- 대표 장소의 Wikidata P18(선호 rank 우선·deprecated 제외)을 먼저 확인한다. 없거나 Commons에 해당 파일이 없으면 같은 문서의 `pilicense=free` 대표 파일을 시도한다. 임의 이름 검색·주변 다른 장소 사진은 사용하지 않는다. Commons Imageinfo의 480px 썸네일·Artist·LicenseShortName을 검증하며 라이선스가 누락되면 실패로 구분한다. 기존 Commons 이미지 호스트·래스터 형식 제한을 유지한다.
+- 모든 메타데이터 호출을 400ms 이상 간격으로 제한한다(분당 약 150회). 최대 동시 3개 작업·작업 전체 10초 제한. HTTP 429/503·ratelimited/maxlag에서 새 작업을 중단하고 자동 재시도하지 않는다. 403도 서비스 접근 오류로 중단한다. 총 요청 수는 예약 작업 수가 아닌 실제 fetch 시작 건수이며 지역/사진을 별도로 집계한다.
+- 지역·문서·사진 캐시는 파일 세션별 메모리만 사용한다. 지우기·교체·dispose 때 모두 해제하고 abort 이후 늦은 응답을 반영하지 않는다. 캐시 영구 저장과 실제 사용자 파일 열람은 추가하지 않는다.
+- 근거: [Geosearch](https://www.mediawiki.org/wiki/API:Geosearch), [GeoData](https://www.mediawiki.org/wiki/Extension:GeoData), [PageImages](https://www.mediawiki.org/wiki/Extension:PageImages), [Wikimedia 속도 제한](https://www.mediawiki.org/wiki/Wikimedia_APIs/Rate_limits), [Commons 재사용](https://commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia).
+
+공개 일본 명소 실제 API 점검: 구마모토성·오호리 공원·후쿠오카성 3곳 모두 정확한 문서명 일치와 사진 메타데이터·라이선스를 확보했다. 각각 5·4·4회 메타데이터 요청을 사용했다. 독립적인 좌표 정밀도 검증이나 모든 명소의 사진 보유율을 입증하는 표본은 아니다. 실제 사용자 자료와 Geoapify는 사용하지 않았다.
+
+
+Wikimedia 실제 검증 결과(2026-10-07, 완전 합성 일본 여행): 원본 관측 2,446개, 검색 구역 87/87개 완료·실패 0, 수집 장소 768곳, 주변 후보 연결 2,297개 관측·후보 없음 149개·오류 0개, 장소 중심 묶음 529개. 연결된 고유 대표 장소 98곳 중 86곳의 사진 주소·라이선스를 확보했고 12곳은 사진 없음이었다. 요청은 363회(지역 검색 179회, 사진 메타데이터 184회), 경과 시간 146초였다. 이 실행은 Node에서 메타데이터를 확인한 것이므로 86장 전체의 이미지 다운로드·표시를 검증한 수치는 아니다. 주변 후보 연결은 실제 방문이나 위치 정확성을 입증하지 않는다.
+
+별도 Edge 실제 연결 검증에서는 공개 구마모토성 좌표 하나에 가상 시각을 붙여 JSON 등록 → 동의 → 원본 기본 유지 → 장소별 보기 → 말풍선 및 상세창의 실제 Commons 사진 로딩을 확인했다. Wikipedia·Wikidata·Commons 메타데이터 5회, 사진 파일 1회, Geoapify 0회였다. 사진의 저작자·CC BY-SA 3.0·원문 링크를 확인했으며 지도 요청만 모의 처리했다. `tests/wikimedia-live-smoke.cjs --live`로 재현한다. 전체 여행 검증은 `tools/check-wikimedia.mjs --live`이며 사용자 원본은 읽지 않았다.
+
+
+최종 로컬 검증: `npm run check`의 타입 검사·자동 테스트 194개(샘플 66개, 앱 128개)·빌드 통과. `tests/app-smoke.cjs`와 `tests/landmark-smoke.cjs`는 개발·프로덕션 빌드에서 통과했다. API 키 없이 파일별 동의, 네 합성 여행, 사진·지역 재사용, 오류·취소, 모바일, 카메라 유지 및 사진 목록을 확인했다. 실제 Edge 시험에서는 브라우저 fetch의 실행 컨텍스트 오류를 발견해 기본 fetch를 globalThis에 바인딩했고 실제 사진 표시까지 재검증했다. 기존 MapLibre 500 kB 초과 청크 경고는 남는다. 사용자 실제 기록 검증·운영 배포·소스 최종 채택은 이번 결과와 구별한다.

@@ -4,7 +4,8 @@ import { separationKm } from '../preview/analysis';
 export const SEARCH_POLICY = { radiusMeters: 300, limit: 10, categories: ['tourism.attraction', 'tourism.sights', 'entertainment.museum'] } as const;
 export type LandmarkError = 'CONFIGURATION' | 'AUTH' | 'RATE_LIMIT' | 'NETWORK' | 'TIMEOUT' | 'RESPONSE_INVALID' | 'PROVIDER_FAILURE' | 'SEARCH_INCOMPLETE';
 export interface LandmarkCandidate {
-  readonly provider: 'geoapify';
+  readonly provider: 'geoapify' | 'wikimedia';
+  readonly sourceUrl?: string;
   readonly providerPlaceId: string;
   readonly name: string;
   readonly coordinate: Coordinate;
@@ -19,7 +20,7 @@ export interface LandmarkImage { url: string; source: string; author?: string; l
 export class ImageFailure extends Error {
   constructor(readonly code: 'UNSUPPORTED' | 'METADATA' | 'NETWORK') { super(code); }
 }
-function commonsFile(value: unknown): string | null {
+export function commonsFile(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > 2048) return null;
   let name = '';
   try {
@@ -77,7 +78,7 @@ async function imageJson(url: URL, signal: AbortSignal, fetcher: typeof fetch, p
   if (!response.ok) throw new ImageFailure('METADATA');
   try { return await response.json(); } catch { throw new ImageFailure('METADATA'); }
 }
-const plainMetadata = (value: unknown) => typeof value === 'string' ? value.replace(/<[^>]*>/g, '').replace(/&(?:nbsp|amp|quot|lt|gt);/g, ' ').trim().slice(0, 300) : '';
+export const plainMetadata = (value: unknown) => typeof value === 'string' ? value.replace(/<[^>]*>/g, '').replace(/&(?:nbsp|amp|quot|lt|gt);/g, ' ').trim().slice(0, 300) : '';
 export async function fetchImage(id: string, key: string, signal: AbortSignal, fetcher: typeof fetch = fetch, onAdditionalRequest: () => void = () => {}): Promise<LandmarkImage | null> {
   const url = new URL('https://api.geoapify.com/v2/place-details');
   url.search = new URLSearchParams({ id, apiKey: key, features: 'details', lang: 'ko' }).toString();
@@ -180,7 +181,7 @@ export async function fetchCandidates(point: Coordinate, key: string, signal: Ab
 // Region discovery returns places independently of any observation or distance ranking.
 export type LandmarkPlace = Omit<LandmarkCandidate, 'distanceMeters'>;
 export interface RegionBounds { west: number; south: number; east: number; north: number }
-export interface RegionPage { places: LandmarkPlace[]; rawCount: number }
+export interface RegionPage { places: LandmarkPlace[]; rawCount: number; subdivide?: boolean }
 export const REGION_PAGE_SIZE = 500;
 export function regionUrl(bounds: RegionBounds, offset: number, key: string): URL {
   if (!key.trim()) throw new LandmarkFailure('CONFIGURATION');

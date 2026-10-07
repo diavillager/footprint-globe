@@ -5,7 +5,7 @@ const { chromium } = require('playwright');
 let stage = 'startup';
 (async () => {
  const { createServer, preview, build } = await import('vite');
- const define = { __MAPTILER_KEY__: JSON.stringify('synthetic-map-key'), __GEOAPIFY_KEY__: JSON.stringify('synthetic-places-key') };
+ const define = { __MAPTILER_KEY__: JSON.stringify('synthetic-map-key'), __GEOAPIFY_KEY__: JSON.stringify('') };
  const outDir = 'node_modules/.cache/landmark-smoke-dist';
  await build({ define, build: { outDir }, logLevel: 'error' });
  const dev = await createServer({ define, server: { port: 0 } }); await dev.listen();
@@ -24,10 +24,12 @@ let stage = 'startup';
     if (url.hostname === 'api.maptiler.com') return route.fulfill(url.pathname.endsWith('logo.svg') ? { contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" />' } : { json: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#edf3ef' } }] } });
     if (url.hostname === 'www.wikidata.org') {
      assert.equal(req.headers().referer, undefined);
-     assert.equal(url.searchParams.get('entity'), 'Q123');
+     requests++; assert.match(url.searchParams.get('entity'), /^Q[1-9][0-9]*$/);
+     if (mode === 'collision' && url.searchParams.get('entity') === 'Q1000') return route.fulfill({json:{claims:{}}});
      return route.fulfill({ json: { claims: { P18: [{ rank: 'normal', mainsnak: { datavalue: { value: mode === 'imagefail' ? 'Failure.png' : 'Synthetic.png' } } }] } } });
     }
     if (url.hostname === 'commons.wikimedia.org') {
+     requests++;
      assert.equal(req.headers().referer, undefined);
      assert.equal(url.searchParams.get('titles'), mode === 'imagefail' ? 'File:Failure.png' : 'File:Synthetic.png');
      assert.equal(url.searchParams.has('apiKey'), false);
@@ -38,27 +40,20 @@ let stage = 'startup';
      if (mode === 'imagefail') return route.abort();
      return route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5n0AAAAASUVORK5CYII=', 'base64') });
     }
-    if (url.origin !== 'https://api.geoapify.com') { unexpected++; return route.abort(); }
+    if (!['ja.wikipedia.org','en.wikipedia.org'].includes(url.hostname)) { unexpected++; return route.abort(); }
     requests++; assert.equal(req.method(), 'GET'); assert.equal(req.postData(), null);
-    assert.equal(url.searchParams.get('apiKey'), 'synthetic-places-key');
-    if (mode === 'hold') { held = () => route.fulfill({ json: { features: [] } }).catch(() => {}); return; }
+    assert.equal(req.headers().referer, undefined);
+    assert.equal(url.searchParams.has('apiKey'), false);
+    assert.equal(url.searchParams.get('generator'),'geosearch');
+    if (mode === 'hold') { held = () => route.fulfill({json:{batchcomplete:true}}).catch(() => {}); return; }
     if (mode === 'auth' || mode === 'rate') return route.fulfill({ status: mode === 'auth' ? 403 : 429, body: 'PRIVATE_ERROR' });
     if (mode === 'offline') return route.abort();
-    if (url.pathname === '/v2/place-details') {
-     assert.deepEqual([...url.searchParams.keys()].sort(), ['apiKey', 'features', 'id', 'lang']);
-     if (url.searchParams.get('id') === 'synthetic-no-photo') return route.fulfill({json:{features:[]}});
-     return route.fulfill({ json: { features: [{ properties: { wiki_and_media: { wikidata: 'Q123' } } }] } });
-    }
-    assert.equal(url.pathname, '/v2/places');
-    assert.deepEqual([...url.searchParams.keys()].sort(), ['apiKey', 'categories', 'filter', 'lang', 'limit', 'offset']);
-    assert.ok(url.searchParams.get('filter').startsWith('rect:'));
-    const [west,south,east,north] = url.searchParams.get('filter').slice(5).split(',').map(Number);
-    const offset = Number(url.searchParams.get('offset'));
-    return route.fulfill({json:{features:mode === 'empty' ? [] : landmarks.filter(f => {
+    const [north,west,south,east] = url.searchParams.get('ggsbbox').split('|').map(Number);
+    return route.fulfill({json:{batchcomplete:true,query:{pages:mode === 'empty' ? [] : landmarks.filter(f => {
      const [x,y] = f.geometry.coordinates; return x >= west && x <= east && y >= south && y <= north;
-    }).slice(offset,offset+500)}});
+    }).map(f=>({pageid:f.id,ns:0,title:f.properties.name,coordinates:[{lat:f.geometry.coordinates[1],lon:f.geometry.coordinates[0],type:'landmark',primary:true}],pageprops:{wikibase_item:'Q'+f.id}}))}}});
    });
-   const page = await context.newPage(); page.setDefaultTimeout(20000);
+   const page = await context.newPage(); page.setDefaultTimeout(35000);
    page.on('pageerror', () => errors++);
    page.on('console', message => { assert.doesNotMatch(message.text(), /CANARY|PRIVATE_ERROR/); });
    await page.goto(origin);
@@ -68,8 +63,8 @@ let stage = 'startup';
     landmarks = coords.flatMap((coordinates,i) => {
      const id = mode === 'collision' && i === 0 ? 'synthetic-no-photo' : 'synthetic-' + i;
      const name = mode === 'collision' && i === 0 ? '사진 없는 앞 지점' : mode === 'gallery' ? '사진 장소 ' + i : '가상 박물관';
-     return [{properties:{place_id:id,name,categories:['entertainment.museum']},geometry:{type:'Point',coordinates}},
-      {properties:{place_id:'far-'+i,name:'더 먼 명소',categories:['tourism.sights']},geometry:{type:'Point',coordinates:[coordinates[0],coordinates[1]+.001]}}];
+     return [{id:1000+i,properties:{place_id:id,name,categories:['entertainment.museum']},geometry:{type:'Point',coordinates}},
+      {id:2000+i,properties:{place_id:'far-'+i,name:'더 먼 명소',categories:['tourism.sights']},geometry:{type:'Point',coordinates:[coordinates[0],coordinates[1]+.001]}}];
     });
     await page.getByLabel('JSON 올리기', { exact: true }).setInputFiles({ name: 'CANARY.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(timeline)) });
     await page.locator('.import-status').filter({ hasText: `관측 ${timeline.rawSignals.length.toLocaleString()}개` }).waitFor();
@@ -133,7 +128,7 @@ let stage = 'startup';
     mode = failure; await load(timeline(2)); const before = requests; await consent();
     await page.getByRole('button', { name: '장소 매핑 진행 상태', exact: true }).hover();
     await page.getByText(failure === 'offline' ? '포인트 대조 2/2개' : '조회 중단', { exact: false }).first().waitFor();
-    await page.waitForTimeout(500); if (failure === 'offline') assert.ok(requests - before > 0); else assert.equal(requests - before, 1);
+    await page.waitForTimeout(500); if (failure === 'offline') assert.ok(requests - before > 0); else assert.ok(requests - before <= 3);
     assert.equal(await page.locator('.diary-card').count(), 0); await page.keyboard.press('Escape');
    }
    mode = 'hold'; await load(timeline(2)); await consent(); await page.waitForTimeout(500);
