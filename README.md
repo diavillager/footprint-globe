@@ -130,6 +130,8 @@ npm run dev
 
 검증은 `npm run check`와 Playwright·Edge가 있는 환경에서 `node tests/app-smoke.cjs`, `node tests/landmark-smoke.cjs`를 사용합니다. 랜드마크 smoke는 네 합성 여행과 모의 지도·API 응답만 사용하며 실제 API 요청을 보내지 않습니다. 기준과 남은 실제 연결 확인은 [랜드마크 명세](specs/2026-10-07-000-landmark-integration.md)를 참고하세요.
 
+브라우저 파일 접근 권한 없이 합성 자료로 실제 지도·API를 확인하려면 [로컬 합성 연결 검증](tools/landmark-live-check/README.md)을 사용합니다. 이 별도 화면은 실제 계정 사용량을 소비하며 프로덕션 빌드에는 포함되지 않습니다.
+
 ## 4. 사용한 기술 스택
 
 | 기술 | 역할 |
