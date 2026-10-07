@@ -27,6 +27,7 @@ export class LandmarkSession {
   private coordinateStates = new Map<string, QueryState>();
   private blocked: LandmarkError | null = null;
   consent = false;
+  stopped = false;
   attempts = 0;
   constructor(readonly key: string, private lookup: Lookup = fetchCandidates, private imageLookup = fetchImage) {}
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -48,7 +49,7 @@ export class LandmarkSession {
   hasImageAttempt(id: string) { return this.imageAttempts.has(id); }
   selection(groupId: string) { return this.selections.get(groupId) ?? null; }
   mappingComplete(groups: readonly ObservationGroup[]) {
-    return this.consent && !this.unavailable && !this.busy && groups.length > 0 && groups.every(group => {
+    return this.consent && !this.stopped && !this.unavailable && !this.busy && groups.length > 0 && groups.every(group => {
       const state = this.state(group.groupId);
       if (state.status === 'empty' || state.status === 'error') return true;
       if (state.status !== 'success') return false;
@@ -67,6 +68,7 @@ export class LandmarkSession {
     else if (state.status === 'success' && state.candidates.some(candidate => candidate.providerPlaceId === candidateId)) this.selections.set(groupId, candidateId);
     this.emit();
   }
+  stopMapping() { this.stopped = true; this.cancel(); }
   cancel() {
     this.generation++;
     for (const job of this.active.values()) {
@@ -80,7 +82,7 @@ export class LandmarkSession {
     this.cancel(); this.consent = false; this.states.clear(); this.selections.clear(); this.images.clear();
     this.imageAttempts.clear(); this.imageStates.clear(); this.coordinateGroups.clear(); this.coordinateStates.clear(); this.emit();
   }
-  dispose() { this.revoke(); this.attempts = 0; this.mediaRequests = 0; this.blocked = null; }
+  dispose() { this.revoke(); this.attempts = 0; this.mediaRequests = 0; this.blocked = null; this.stopped = false; }
   private updateCoordinate(key: string, state: QueryState) {
     this.coordinateStates.set(key, state);
     for (const id of this.coordinateGroups.get(key) ?? []) this.states.set(id, state);
@@ -103,7 +105,7 @@ export class LandmarkSession {
     finally { clearTimeout(timer); if (valid()) { this.active.delete(token); this.emit(); } }
   }
   async queryImage(id: string): Promise<void> {
-    if (!this.consent || !this.capacity || this.unavailable || this.imageAttempts.has(id)) return;
+    if (!this.consent || this.stopped || !this.capacity || this.unavailable || this.imageAttempts.has(id)) return;
     this.imageAttempts.add(id); this.imageStates.set(id, 'loading');
     await this.run(id, true, async (signal, valid) => {
       const image = await this.imageLookup(id, this.key, signal, fetch, () => {
@@ -114,7 +116,7 @@ export class LandmarkSession {
   }
   async query(group: ObservationGroup): Promise<void> {
     const previous = this.state(group.groupId);
-    if (!this.consent || previous.status !== 'idle') return;
+    if (!this.consent || this.stopped || previous.status !== 'idle') return;
     const point = group.representative.coordinate, key = `${point.latitude},${point.longitude}`;
     const reused = this.coordinateStates.get(key);
     const ids = this.coordinateGroups.get(key) ?? new Set<string>(); ids.add(group.groupId); this.coordinateGroups.set(key, ids);
@@ -133,7 +135,7 @@ export class LandmarkSession {
 export function startMapping(groups: readonly ObservationGroup[], session: LandmarkSession) {
   let cursor = 0, photoCursor = 0;
   const timer = setInterval(() => {
-    if (!session.consent || !session.capacity || session.unavailable) return;
+    if (!session.consent || session.stopped || !session.capacity || session.unavailable) return;
     while (cursor < groups.length && session.state(groups[cursor]!.groupId).status !== 'idle') cursor++;
     while (cursor < groups.length) { const before = session.attempts; void session.query(groups[cursor++]!); if (session.attempts !== before) return; }
     // Wait for all place results so images cannot delay names or skip late results.

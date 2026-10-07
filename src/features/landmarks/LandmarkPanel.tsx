@@ -33,7 +33,7 @@ export function LandmarkPanel({ group, session }: { group: ObservationGroup; ses
         <p className="place-category">{categoryLabel(candidate.categories)}</p>
         {session.image(candidate.providerPlaceId) && photoStatus !== 'load-error' ? <LandmarkPhoto key={candidate.providerPlaceId} id={candidate.providerPlaceId} session={session} eager /> : <div className="place-photo-empty">{photoStatus === undefined ? '이 장소의 사진은 아직 조회되지 않았습니다.' : photoStatus === 'loading' ? '사진을 조회하고 있습니다…' : '표시할 사진이 없습니다.'}</div>}
         <dl><dt>기록 지점과 거리</dt><dd>{Math.round(candidate.distanceMeters)}m</dd><dt>장소 위치</dt><dd>{candidate.coordinate.latitude.toFixed(5)}, {candidate.coordinate.longitude.toFixed(5)}</dd></dl>
-        <p>기록 지점 주변에서 찾은 장소입니다. 실제 방문 여부와 당시 존재 여부를 뜻하지 않습니다.</p>
+        <p>지도 말풍선은 기록 위치에 표시됩니다. 위 장소 위치와 다를 수 있습니다. 기록 지점 주변에서 찾은 장소입니다. 실제 방문 여부와 당시 존재 여부를 뜻하지 않습니다.</p>
       </div>
     </div>}
     {state.status === 'loading' && <p role="status">주변 장소를 조회하는 중입니다…</p>}

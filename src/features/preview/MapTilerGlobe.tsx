@@ -5,7 +5,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type { Observation } from '../../domain/timeline';
 import type { Connection } from './analysis';
-import { type DisplayTimezone } from './observationTime';
+import { formatDiaryTime, type DisplayTimezone } from './observationTime';
 import { mapTilerKey } from '../../map-config';
 import { mapConnections, mapPoints } from './mapData';
 import type { ObservationGroup } from '../landmarks/groups';
@@ -17,7 +17,7 @@ type Props = {
   points: readonly Observation[]; connections: readonly Connection[];
   selectedObservation: Observation | null; focusRevision: number;
   landmarkSession: LandmarkSession;
-  timezone: DisplayTimezone;
+  timezone: DisplayTimezone; showPointPopup: boolean; candidates: readonly Observation[]; onClose: () => void;
   onPick: (points: Observation[]) => void; onSelect: (point: Observation) => void;
 };
 sdk.setWorkerUrl(workerUrl);
@@ -36,6 +36,7 @@ export default function MapTilerGlobe(props: Props) {
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [popupHost] = useState(() => document.createElement('div'));
   const focusedRevision = useRef(props.focusRevision);
   const points = useMemo(() => mapPoints(props.points), [props.points]);
   const lines = useMemo(() => mapConnections(props.connections, false, 0), [props.connections]);
@@ -112,6 +113,25 @@ export default function MapTilerGlobe(props: Props) {
     focusedRevision.current = props.focusRevision;
   }, [ready, props.selectedObservation, props.focusRevision]);
   useEffect(() => {
+    if (!ready || !map.current || !props.selectedObservation || !props.showPointPopup) return;
+    const instance = map.current, point = props.selectedObservation;
+    const popup = new sdk.Popup({ closeButton: false, closeOnClick: false, maxWidth: '300px', offset: 10, className: 'observation-popup', focusAfterOpen: false })
+      .setLngLat([point.coordinate.longitude, point.coordinate.latitude]).setDOMContent(popupHost).addTo(instance);
+    let frame = 0;
+    const fit = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (!container.current) return;
+        const rect = popup.getElement().getBoundingClientRect(), area = container.current.getBoundingClientRect();
+        const top = Math.max(area.top + 8, (document.querySelector('.top-controls')?.getBoundingClientRect().bottom ?? area.top) + 8);
+        const dy = rect.top < top ? rect.top - top : Math.max(0, rect.bottom - area.bottom + 8);
+        if (Math.abs(dy) > 1) instance.panBy([0, dy], {duration: 0});
+      });
+    };
+    const resize = new ResizeObserver(fit); resize.observe(popupHost); fit();
+    return () => { cancelAnimationFrame(frame); resize.disconnect(); popup.remove(); };
+  }, [ready, props.selectedObservation, props.showPointPopup, popupHost]);
+  useEffect(() => {
     if (!ready || !map.current) return;
     const instance = map.current;
     const chooseVisible = () => {
@@ -167,7 +187,17 @@ export default function MapTilerGlobe(props: Props) {
     layout();
     return () => { instance.off('render', layout); observer.disconnect(); markers.forEach(marker => marker.remove()); };
   }, [ready, diaryHosts]);
+  const selected = props.selectedObservation;
+  const selectedIndex = selected ? props.candidates.findIndex(point => point.id === selected.id) : -1;
   return <div className="map-surface">
+    {selected && props.showPointPopup && createPortal(<div role="dialog" aria-label="포인트 정보" onKeyDown={event => { if (event.key === 'Escape') props.onClose(); }}>
+      <button className="popup-close" aria-label="말풍선 닫기" onClick={props.onClose}>×</button>
+      <h3>관측 {props.originalPoints.indexOf(selected) + 1}</h3>
+      <p>{formatDiaryTime(selected.time, props.timezone)}</p>
+      <p>기록 위치<br />위도 {selected.coordinate.latitude}<br />경도 {selected.coordinate.longitude}</p>
+      {props.candidates.length > 1 && <div className="popup-candidates"><p>겹친 지점 {selectedIndex + 1} / {props.candidates.length}</p><button disabled={selectedIndex <= 0} onClick={() => props.onSelect(props.candidates[selectedIndex - 1]!)}>이전 지점</button><button disabled={selectedIndex >= props.candidates.length - 1} onClick={() => props.onSelect(props.candidates[selectedIndex + 1]!)}>다음 지점</button></div>}
+    </div>, popupHost)}
+
     {diaryHosts.map(({ group, host, index }) => createPortal(<DiaryCard group={group} index={index} session={props.landmarkSession} timezone={props.timezone} onSelect={props.onSelect} />, host, group.groupId))}
     {!mapTilerKey ? <p role="alert" className="map-message">지도 키가 없습니다. VITE_MAPTILER_API_KEY를 설정해 주세요. JSON 등록과 목록 확인은 계속 사용할 수 있습니다.</p> : <>
       <div className={ready && !failed ? 'sr-only' : 'map-message'}><p role="status">{failed ? '[MAP_UNAVAILABLE] 일부 지도 자료를 불러오지 못했습니다. 기록 목록은 계속 사용할 수 있습니다.' : ready ? '상세 지도 준비 완료' : '상세 지도를 불러오는 중입니다…'}</p>

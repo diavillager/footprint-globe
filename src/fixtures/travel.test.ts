@@ -70,3 +70,14 @@ describe('authored travel demos', () => {
     expect(points.some((r, i) => i > 0 && Date.parse(r.position.timestamp) - Date.parse(points[i - 1]!.position.timestamp) > 10 * 3600000)).toBe(true);
   });
 });
+
+it('일본 후쿠오카 샘플은 항구를 가로지르던 북쪽 구간을 생성하지 않는다', () => {
+  const points = buildTrip('japan').timeline.rawSignals
+    .filter(point => point.position.timestamp.startsWith('2025-10-22'))
+    .map(point => point.position.LatLng.replaceAll('°', '').split(',').map(Number));
+  expect(points.length).toBeGreaterThan(100);
+  for (const [lat, lon] of points) {
+    expect(lat).toBeGreaterThan(33.58); expect(lat).toBeLessThan(33.594);
+    expect(lon).toBeGreaterThan(130.399); expect(lon).toBeLessThan(130.421);
+  }
+});

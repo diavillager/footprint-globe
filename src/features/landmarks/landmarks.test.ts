@@ -244,3 +244,20 @@ it('장소와 사진이 모두 처리되어야 장소별 보기를 허용한다'
   session.revoke();
   expect(session.mappingComplete(groups)).toBe(false);
 });
+
+it('추가 조회 중단은 성공 결과를 보존하고 스케줄러와 진행 중 요청을 멈춘다', async () => {
+  vi.useFakeTimers();
+  const lookup = vi.fn().mockResolvedValueOnce(candidates).mockImplementation(() => new Promise(() => {}));
+  const session = new LandmarkSession('key', lookup); session.allow();
+  await session.query(group());
+  const stop = startMapping([group(), group(1), group(2)], session);
+  await vi.advanceTimersByTimeAsync(250);
+  session.stopMapping();
+  expect(session.state(group().groupId).status).toBe('success');
+  expect(session.state(group(1).groupId).status).toBe('cancelled');
+  expect(session.consent).toBe(true);
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(lookup).toHaveBeenCalledTimes(2);
+  expect(session.mappingComplete([group()])).toBe(false);
+  stop(); session.dispose();
+});

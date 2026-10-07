@@ -219,3 +219,14 @@ MapTiler는 식당·상점·병원·편의점·역과 의미 없는 이름도 �
 2. 우선 보완 후보는 연결된 Wikipedia 문서의 PageImages API이다. 문서 제목으로 대표 이미지·썸네일을 조회하고 pilicense=free를 적용할 수 있다. Commons의 저작자·라이선스를 계속 확인해야 하며, 새로운 Wikipedia 요청 대상·동의 안내·CSP 변경을 검토해야 한다. 아직 실제 자료의 사진 공급률 개선은 측정하지 않았다. [PageImages](https://www.mediawiki.org/wiki/Extension:PageImages)
 3. 연결된 문서가 없으면 장소명·좌표 기반 문서 검색을 고려할 수 있지만 같은 이름이나 주변 다른 장소를 자동으로 같은 장소로 취급하면 안 된다. 이름·거리·분류 일치 검증이 필요하고 좌표의 추가 전송 결정이 필요하다. [Geosearch](https://www.mediawiki.org/wiki/API:Geosearch)
 4. Google Places Photos는 검색/상세에서 받은 사진 리소스로 이미지를 조회할 수 있고 저작자 표시가 필요하다. Google 장소 ID 매칭과 키·과금 설정이 필요하다. Google 정책은 지도 위 Places 결과를 Google 지도에 표시하도록 요구하므로 현 MapTiler 말풍선에 바로 추가하는 방식으로 진행하지 않는다. [사진 API](https://developers.google.com/maps/documentation/places/web-service/place-photos), [표시 정책](https://developers.google.com/maps/documentation/places/web-service/policies)
+
+
+## 포인트 정보·사진 탐색·중단과 일본 샘플 보완
+
+- 일반 포인트(원본 경로 및 장소별 보기의 미매핑 포인트)는 지도 말풍선으로 표시한다. 장소별 보기에서 최근접 후보가 매핑된 포인트만 중앙 장소 상세창을 연다.
+- 사진 순환 버튼은 상세창 닫기 시 선택 ID가 초기화되어 첫 장소로 돌아가던 구조였다. 사진이 있는 고유 장소 전체를 이름 목록으로 제시하고 직접 선택한다. 이미지 로딩 실패는 탐색 목록에서 제외한다.
+- ‘추가 조회 중단’은 스케줄러와 진행 중 요청을 멈추되 완료 결과를 보존한다. 새 요청은 시작하지 않는다. 삭제는 JSON 올리기 옆 지우기로 통합한다. 미완료·중단된 파일은 기존 완료 전 전환 금지 정책을 유지한다.
+- 스크루 전시물은 현장 취재 사진상 가모메 광장에 있는 전시물이다. [현장 기사](https://fukuoka-leapup.jp/city/202512.68562). 원본 OSM 좌표를 직접 대조하려던 Overpass 요청은 실패했으므로 Geoapify 좌표의 정밀 정확도까지 검증한 것은 아니다.
+- 앱의 말풍선 기준은 장소 좌표가 아닌 관측 대표점이다. 일본 가상 입력은 직선 보간이며 항구를 지나는 가상 관측이 생길 수 있었다. 후쿠오카 북쪽 거점을 내륙으로 바꾸고 새 파일로 제공한다. 데이터 공급자 교체로 잘못된 입력 좌표가 고쳐지는 것은 아니다.
+- 공급자 대안: Google Places는 사진 리소스를 제공하지만 지도 표시 정책상 Google 지도 전환을 함께 검토해야 한다. Foursquare도 장소 사진 API를 제공하므로 MapTiler를 유지하는 대안 후보이며 계약·지역별 공급률 확인이 필요하다. 공식 API 존재만으로 Geoapify보다 정확하거나 일본 사진이 풍부하다고 판단하지 않는다. [Google 사진](https://developers.google.com/maps/documentation/places/web-service/place-photos), [Google 정책](https://developers.google.com/maps/documentation/places/web-service/policies), [Foursquare 사진](https://docs.foursquare.com/fsq-developers-places/reference/place-photos).
+- 공급자 선택 전 합성 경로가 아닌 공개된 실제 장소의 정답 좌표·명칭으로 동일 지역의 위치 오차, 이름 일치, 사진 보유율을 비교하는 것이 적절하다. 이번에 새 서비스 키·유료 요청·외부 전송 또는 지도 공급자 변경은 추가하지 않았다.

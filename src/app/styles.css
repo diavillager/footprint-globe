@@ -178,3 +178,9 @@ main.map-app { position: fixed; inset: 0; max-width: none; margin: 0; padding: 0
  .place-details dd { text-align: left; margin-bottom: 8px; }
  .place-photo-empty { min-height: 110px; padding: 8px; }
 }
+
+.mapping-progress-detail { max-height: 65vh; overflow-y: auto; }
+.photo-places { margin-top: 10px; }
+.photo-places summary { cursor: pointer; font-weight: 700; }
+.photo-places ul { list-style: none; padding: 0; margin: 4px 0; }
+.observation-popup [role=dialog] { max-height: 45vh; overflow-y: auto; padding-right: 8px; }
