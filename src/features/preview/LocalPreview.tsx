@@ -133,7 +133,7 @@ export function LocalPreview() {
       </nav>
       <div className="import-status" role="status" aria-live="polite">{busy ? '로컬에서 위치·시각을 검사하고 정렬하는 중입니다…' : !result ? 'JSON을 올려 발자취를 확인하세요.' : result.ok ? '관측 ' + result.counts.accepted.toLocaleString() + '개 · 연결 ' + connections.length.toLocaleString() + '개' + (groups.length ? ' · 장소별 지점 ' + groups.length.toLocaleString() + '개' : '') : '[' + result.code + '] ' + errors[result.code]}</div>
     </div>
-    {viewMode === 'mapped' && <div className="summary-legend" role="status">장소 {placeSummary.nodes.length}곳 · 연결 {placeSummary.edges.length}개<span>같은 장소의 포인트를 모아 표시합니다.</span>{mappedSelection && <span>선택 기록의 앞뒤 연결 강조</span>}</div>}
+    {viewMode === 'mapped' && <div className="summary-legend" role="status">장소 {placeSummary.nodes.length}곳 · 연결 {placeSummary.edges.length}개<span>같은 장소와 가까운 경유점을 모아 표시합니다.</span>{mappedSelection && <span>선택 기록의 앞뒤 연결 강조</span>}</div>}
     {viewMode === 'mapped' && stops.length > 0 && <LandmarkRail key={data?.datasetId} stops={stops} selectedId={selectedId} onSelect={point => { setCandidates(null); setPanel(null); selectObservation(point, 'rail'); }} />}
     {!panel && selectedObservation && showPlaceDetails && <Panel title="기록 상세" modal={false} onClose={resetSelection}>
       <div className="record-detail">

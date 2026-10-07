@@ -5,8 +5,8 @@ import { groupObservations } from './groups';
 import { summaryLines } from '../preview/mapData';
 import { summarizePlaces } from './placeSummary';
 
-function fixture(ids: (string | null)[]) {
-  const points: Observation[] = ids.map((_,i)=>({id:`observation:${i}`,coordinate:{latitude:37+i*.0001,longitude:127},time:{epochMs:i*10_800_000,sourceText:new Date(i*10_800_000).toISOString()}}));
+function fixture(ids: (string | null)[], coordinates?: Observation['coordinate'][]) {
+  const points: Observation[] = ids.map((_,i)=>({id:`observation:${i}`,coordinate:coordinates?.[i] ?? {latitude:37+i*.001,longitude:127},time:{epochMs:i*10_800_000,sourceText:new Date(i*10_800_000).toISOString()}}));
   const groups = groupObservations('dataset:summary',points);
   const candidates = groups.map((_,i): LandmarkCandidate | null => ids[i] ? {provider:'wikimedia',providerPlaceId:ids[i]!,name:'같은 이름',coordinate:points[i]!.coordinate,categories:[],distanceMeters:1000-i,attribution:'Wikidata'} : null);
   const summary = summarizePlaces(groups,g=>candidates[groups.indexOf(g)]!);
@@ -55,4 +55,40 @@ it('500개 반복 기록은 세 장소와 세 연결로 요약하며 모든 기�
   expect(summary.byObservation.size).toBe(500);
   expect(summary.edges.reduce((n,e)=>n+e.transitions.length,0)).toBe(499);
   expect(summary.nodes.reduce((n,p)=>n+p.groups.length,0)).toBe(points.length);
+});
+
+it('미매핑 600개를 세 근접 묶음과 세 연결로 통합하고 모든 원본 기록을 보존한다',()=>{
+  const coordinates=Array.from({length:600},(_,i)=>({latitude:37+(i%3)*.003+(i%7)*.00001,longitude:127+(i%5)*.00001}));
+  const {summary,groups}=fixture(coordinates.map(()=>null),coordinates);
+  expect(summary.nodes).toHaveLength(0);expect(summary.byObservation.size).toBe(0);
+  expect(summary.waypoints).toHaveLength(3);expect(summary.edges).toHaveLength(3);
+  expect(summary.waypoints.flatMap(node=>node.groups)).toHaveLength(600);
+  expect(new Set(summary.waypoints.flatMap(node=>node.groups.map(group=>group.groupId))).size).toBe(600);
+  expect(summary.edges.reduce((n,edge)=>n+edge.transitions.length,0)).toBe(599);
+  expect(groups).toHaveLength(600);
+});
+it('50m 묶음을 연쇄 확장하지 않고 같은 묶음 내부 선만 제거한다',()=>{
+  const {summary}=fixture([null,null,null],[{latitude:0,longitude:0},{latitude:.00036,longitude:0},{latitude:.00072,longitude:0}]);
+  expect(summary.waypoints).toHaveLength(2);
+  expect(summary.waypoints[0]!.groups).toHaveLength(2);expect(summary.edges).toHaveLength(1);
+  expect(summary.edges[0]!.transitions).toEqual([{from:'observation:1',to:'observation:2'}]);
+});
+it('셀 경계·날짜변경선·극점 주변에서도 실제 거리로 묶는다',()=>{
+  for(const coordinates of [
+    [{latitude:0,longitude:-.0001},{latitude:0,longitude:.0001}],
+    [{latitude:0,longitude:179.9999},{latitude:0,longitude:-179.9999}],
+    [{latitude:89.9999,longitude:0},{latitude:89.9999,longitude:180}],
+  ]) expect(fixture([null,null],coordinates).summary.waypoints).toHaveLength(1);
+});
+it('가까운 미매핑 포인트를 랜드마크로 간주하지 않고 각 기록의 연결만 강조한다',()=>{
+  const {summary}=fixture(['A',null,'B',null,'C'],[
+    {latitude:37,longitude:127},{latitude:37,longitude:127.0001},
+    {latitude:37.01,longitude:127},{latitude:37,longitude:127.0002},{latitude:37.02,longitude:127},
+  ]);
+  expect(summary.nodes).toHaveLength(3);expect(summary.waypoints).toHaveLength(1);
+  expect(summary.byObservation.has('observation:1')).toBe(false);
+  expect(summary.edges).toHaveLength(3);
+  const lines=summaryLines(summary,'observation:0');
+  expect(lines.features.filter(feature=>feature.properties?.highlighted)).toHaveLength(1);
+  expect(summary.nodes[0]!.groups).toHaveLength(1);
 });

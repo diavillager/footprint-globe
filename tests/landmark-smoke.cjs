@@ -319,9 +319,26 @@ let stage = 'startup';
    await page.getByRole('button',{name:'위치 기록',exact:true}).click();
    assert.equal(await page.locator('.observation-list button').count(),18,'raw records are untouched');
    await page.getByRole('button',{name:'창 닫기',exact:true}).click();
+   mode='empty';
+   const noisy=timeline(180), centers=[[37,127],[37.002,127.003],[37.004,127]];
+   noisy.rawSignals.forEach((signal,i)=>{const [lat,lon]=centers[i%3];signal.position.LatLng=`${(lat+(i%7)*.00001).toFixed(6)}°, ${(lon+(i%5)*.00001).toFixed(6)}°`;});
+   await load(noisy);await consent();
+   await page.locator('.summary-legend').filter({hasText:'장소 0곳 · 연결 3개'}).waitFor();
+   assert.equal(await rail.count(),0,'unmatched display groups never become landmarks or numbered visits');
+   assert.equal(await page.locator('.diary-balloon').count(),0);
+   const requestsAfterMapping=requests;
+   await page.waitForTimeout(400);const simplified=await railCamera();
+   await page.screenshot({path:`node_modules/.cache/waypoints-simplified-${stage}.png`});
+   await page.getByRole('button',{name:'원본 경로',exact:true}).click();await page.waitForTimeout(400);
+   assert.ok(!(await railCamera()).equals(simplified),'raw path still displays original noisy geometry');
+   await page.screenshot({path:`node_modules/.cache/waypoints-original-${stage}.png`});
+   await page.locator('.import-status').filter({hasText:'관측 180개 · 연결 179개'}).waitFor();
+   await page.getByRole('button',{name:'장소별 보기',exact:true}).click();await page.waitForTimeout(400);
+   assert.ok((await railCamera()).equals(simplified),'same camera and display groups after raw/mapped round trip');
+   assert.equal(requests,requestsAfterMapping,'display grouping makes no API requests');
    assert.ok(images > 0); assert.equal(errors, 0); assert.equal(unexpected, 0);
    assert.equal(await page.evaluate(() => localStorage.length + sessionStorage.length), 0);
-   await context.close(); console.log(stage + (process.argv.includes('--rail-only') ? ' PASS: minimal ruler, mouse/touch drag, animated centering, selection dismissal, replacement, mobile, deduplicated places/edges and revisit details' : ' PASS: four trips, photos, errors, camera preservation, mobile, mapped-place ruler and selection dismissal'));
+   await context.close(); console.log(stage + (process.argv.includes('--rail-only') ? ' PASS: minimal ruler, mouse/touch drag, animated centering, selection dismissal, replacement, mobile, deduplicated places/edges, revisit details, nearby unmatched waypoints' : ' PASS: four trips, photos, errors, camera preservation, mobile, mapped-place ruler and selection dismissal'));
   }
  } finally { await browser.close(); await dev.close(); await new Promise(resolve => production.httpServer.close(resolve)); }
 })().catch(error => { console.error('Diary smoke failed at ' + stage + ': ' + error.stack.replace(/https?:\/\/\S+/g, '[URL]')); process.exitCode = 1; });
